@@ -141,6 +141,15 @@ export default function CheckoutPage() {
     setPaymentError('');
 
     try {
+      const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!razorpayKey || razorpayKey === 'your-razorpay-key-id-here') {
+        const msg = 'Payment gateway is not configured. Please contact support.';
+        setPaymentError(msg);
+        showToast(msg, 'error');
+        setLoading(false);
+        return;
+      }
+
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
         const msg = 'Failed to load payment gateway. Please check your connection and try again.';
@@ -167,7 +176,7 @@ export default function CheckoutPage() {
       }
 
       const options: RazorpayOptions = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '',
+        key: razorpayKey,
         amount: data.amount,
         currency: data.currency,
         name: 'PurelyJid',
@@ -196,6 +205,16 @@ export default function CheckoutPage() {
       };
 
       const rzp = new window.Razorpay(options);
+
+      // Catch SDK-level errors (invalid key, network issues, etc.)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (rzp as any).on('payment.failed', (response: any) => {
+        const msg = response?.error?.description || 'Payment failed. Please try again.';
+        setPaymentError(msg);
+        showToast(msg, 'error');
+        setLoading(false);
+      });
+
       rzp.open();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';

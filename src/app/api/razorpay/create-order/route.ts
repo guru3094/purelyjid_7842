@@ -7,8 +7,8 @@ export async function POST(req: NextRequest) {
     const keyId = process.env.RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
-    if (!keyId || !keySecret) {
-      return NextResponse.json({ error: 'Razorpay keys not configured' }, { status: 500 });
+    if (!keyId || !keySecret || keyId === 'your-razorpay-key-id-here' || keySecret === 'your-razorpay-key-secret-here') {
+      return NextResponse.json({ error: 'Razorpay keys not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment variables.' }, { status: 500 });
     }
 
     const response = await fetch('https://api.razorpay.com/v1/orders', {
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
         Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}`,
       },
       body: JSON.stringify({
-        amount: Math.round(amount * 100), // paise
+        amount: Math.round(amount * 100), // convert rupees to paise
         currency: 'INR',
         receipt: `receipt_${Date.now()}`,
       }),
@@ -27,11 +27,15 @@ export async function POST(req: NextRequest) {
     const order = await response.json();
 
     if (!response.ok) {
-      return NextResponse.json({ error: order.error?.description || 'Failed to create order' }, { status: 400 });
+      return NextResponse.json(
+        { error: order.error?.description || order.error?.reason || 'Failed to create Razorpay order' },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({ orderId: order.id, amount: order.amount, currency: order.currency });
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
