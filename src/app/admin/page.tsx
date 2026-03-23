@@ -2670,17 +2670,21 @@ export default function AdminPage() {
             <div className="space-y-6">
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
                 <h2 className="font-display italic text-xl font-semibold text-foreground mb-1">Google Reviews</h2>
-                <p className="text-xs text-muted-foreground mb-6">Fetch and display your Google Business reviews on your storefront.</p>
+                <p className="text-xs text-muted-foreground mb-6">Configure your Google Places API credentials. Once saved, reviews will automatically appear on the Custom Products page for all visitors.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
                     <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Google Places API Key</label>
                     <input
-                      type="text"
+                      type="password"
                       value={googleApiKey}
                       onChange={(e) => setGoogleApiKey(e.target.value)}
                       placeholder="AIza..."
-                      className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                      className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary font-mono"
                     />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Enable <strong>Places API</strong> in{' '}
+                      <a href="https://console.cloud.google.com/apis/library/places-backend.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">Google Cloud Console</a>
+                    </p>
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Google Place ID</label>
@@ -2689,32 +2693,66 @@ export default function AdminPage() {
                       value={googlePlaceId}
                       onChange={(e) => setGooglePlaceId(e.target.value)}
                       placeholder="ChIJ..."
-                      className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                      className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary font-mono"
                     />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Find your Place ID at{' '}
+                      <a href="https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder" target="_blank" rel="noopener noreferrer" className="text-primary underline">Place ID Finder</a>
+                    </p>
                   </div>
                 </div>
-                <button
-                  onClick={async () => {
-                    if (!googleApiKey || !googlePlaceId) { setGoogleReviewsError('Please enter both API Key and Place ID.'); return; }
-                    setFetchingReviews(true);
-                    setGoogleReviewsError('');
-                    setGooglePlaceData(null);
-                    try {
-                      const res = await fetch(`/api/google-places?placeId=${encodeURIComponent(googlePlaceId)}&apiKey=${encodeURIComponent(googleApiKey)}`);
-                      const data = await res.json();
-                      if (!res.ok) throw new Error(data.error || 'Failed to fetch reviews');
-                      setGooglePlaceData(data);
-                    } catch (err: any) {
-                      setGoogleReviewsError(err.message || 'Failed to fetch reviews.');
-                    } finally { setFetchingReviews(false); }
-                  }}
-                  disabled={fetchingReviews}
-                  className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
-                >
-                  {fetchingReviews ? 'Fetching…' : 'Fetch Reviews'}
-                </button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    onClick={async () => {
+                      if (!googleApiKey || !googlePlaceId) { setGoogleReviewsError('Please enter both API Key and Place ID.'); return; }
+                      setFetchingReviews(true);
+                      setGoogleReviewsError('');
+                      setGooglePlaceData(null);
+                      try {
+                        const res = await fetch(`/api/google-places?placeId=${encodeURIComponent(googlePlaceId)}&apiKey=${encodeURIComponent(googleApiKey)}`);
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Failed to fetch reviews');
+                        setGooglePlaceData(data);
+                        // Save to localStorage so customer-facing page can load reviews
+                        localStorage.setItem('gplaces_api_key', googleApiKey.trim());
+                        localStorage.setItem('gplaces_place_id', googlePlaceId.trim());
+                        showToast('Google Reviews configured and saved! Reviews will now appear on the Custom Products page.', 'success');
+                      } catch (err: any) {
+                        setGoogleReviewsError(err.message || 'Failed to fetch reviews.');
+                      } finally { setFetchingReviews(false); }
+                    }}
+                    disabled={fetchingReviews}
+                    className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {fetchingReviews ? (
+                      <><div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />Testing & Saving…</>
+                    ) : (
+                      <><Icon name="CheckIcon" size={13} />Save & Load Reviews</>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('gplaces_api_key');
+                      localStorage.removeItem('gplaces_place_id');
+                      setGoogleApiKey('');
+                      setGooglePlaceId('');
+                      setGooglePlaceData(null);
+                      setGoogleReviewsError('');
+                      showToast('Google Reviews configuration cleared.', 'success');
+                    }}
+                    className="h-10 px-6 rounded-full border border-red-200 text-red-500 text-xs font-semibold uppercase tracking-[0.15em] hover:bg-red-50 transition-colors"
+                  >
+                    Clear Config
+                  </button>
+                </div>
                 {googleReviewsError && (
                   <p className="mt-3 text-xs text-red-600 font-medium">{googleReviewsError}</p>
+                )}
+                {typeof window !== 'undefined' && localStorage.getItem('gplaces_api_key') && localStorage.getItem('gplaces_place_id') && (
+                  <div className="mt-4 flex items-center gap-2 text-xs text-green-600">
+                    <Icon name="CheckCircleIcon" size={14} className="text-green-500" />
+                    Configuration active — reviews are displaying on the Custom Products page
+                  </div>
                 )}
               </div>
               {googlePlaceData && (
