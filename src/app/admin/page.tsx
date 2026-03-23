@@ -2326,8 +2326,69 @@ export default function AdminPage() {
 
           {/* ── Users Tab ── */}
           {activeTab === 'users' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <h2 className="font-display italic text-2xl font-semibold text-foreground">Users ({users.length})</h2>
+
+              {/* Admin Account Management */}
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Icon name="ShieldCheckIcon" size={18} className="text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground text-sm">Admin Account</h3>
+                    <p className="text-xs text-muted-foreground">Info@purelyjid.in</p>
+                  </div>
+                  <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">admin</span>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {/* Send Reset Email */}
+                  <div className="p-4 rounded-xl bg-[#FAF6F0] border border-[rgba(196,120,90,0.12)]">
+                    <p className="text-xs font-semibold text-foreground mb-1">Reset Password via Email</p>
+                    <p className="text-[11px] text-muted-foreground mb-3">Send a password reset link to Info@purelyjid.in</p>
+                    <button
+                      onClick={sendAdminPasswordReset}
+                      disabled={sendingReset}
+                      className="h-9 px-4 rounded-full bg-foreground text-[#FAF6F0] text-[11px] font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-60 flex items-center gap-2"
+                    >
+                      {sendingReset ? (
+                        <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending…</>
+                      ) : (
+                        <><Icon name="EnvelopeIcon" size={12} />Send Reset Email</>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Generate New Password */}
+                  <div className="p-4 rounded-xl bg-[#FAF6F0] border border-[rgba(196,120,90,0.12)]">
+                    <p className="text-xs font-semibold text-foreground mb-1">Generate New Password</p>
+                    <p className="text-[11px] text-muted-foreground mb-3">Generate a strong random password to use</p>
+                    <button
+                      onClick={generateAdminPassword}
+                      disabled={generatingPassword}
+                      className="h-9 px-4 rounded-full border border-[rgba(196,120,90,0.3)] text-foreground text-[11px] font-semibold uppercase tracking-[0.15em] hover:border-primary hover:text-primary transition-colors disabled:opacity-60 flex items-center gap-2"
+                    >
+                      <Icon name="KeyIcon" size={12} />
+                      Generate Password
+                    </button>
+                    {newGeneratedPassword && (
+                      <div className="mt-3 flex items-center gap-2 p-2.5 rounded-lg bg-white border border-[rgba(196,120,90,0.2)]">
+                        <code className="flex-1 text-xs font-mono text-foreground break-all">{newGeneratedPassword}</code>
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(newGeneratedPassword); showToast('Password copied!', 'success'); }}
+                          className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                          title="Copy password"
+                        >
+                          <Icon name="ClipboardDocumentIcon" size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* All Users */}
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
                 {users.length === 0 ? (
                   <div className="px-6 py-12 text-center"><Icon name="UsersIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm text-muted-foreground">No users yet.</p></div>

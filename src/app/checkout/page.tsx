@@ -8,6 +8,7 @@ import Icon from '@/components/ui/AppIcon';
 import AppImage from '@/components/ui/AppImage';
 import { useToast } from '@/contexts/ToastContext';
 import { useCart } from '@/contexts/CartContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface FormData {
   firstName: string;
@@ -54,6 +55,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { cartItems, itemCount, subtotal, clearCart } = useCart();
+  const { user, loading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [paymentError, setPaymentError] = useState('');
@@ -69,11 +71,25 @@ export default function CheckoutPage() {
   });
   const [errors, setErrors] = useState<Partial<FormData>>({});
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login?redirect=/checkout');
+    }
+  }, [user, authLoading, router]);
+
   // Brief loading for hydration
   useEffect(() => {
     const t = setTimeout(() => setIsLoading(false), 400);
     return () => clearTimeout(t);
   }, []);
+
+  // Pre-fill email from logged-in user
+  useEffect(() => {
+    if (user?.email && !formData.email) {
+      setFormData((prev) => ({ ...prev, email: user.email || '' }));
+    }
+  }, [user]);
 
   const shipping = subtotal >= 125000 ? 0 : 999;
   const total = subtotal + shipping;
@@ -206,6 +222,14 @@ export default function CheckoutPage() {
     <main className="bg-[#FAF6F0] min-h-screen overflow-x-hidden">
       <Header />
 
+      {/* Auth redirect loading */}
+      {(authLoading || (!user && !authLoading)) ? (
+        <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+          <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+          <p className="text-sm text-muted-foreground">Redirecting to login…</p>
+        </div>
+      ) : (
+        <>
       {/* Page Header */}
       <section className="pt-32 pb-10 px-6">
         <div className="mx-auto max-w-7xl">
@@ -437,6 +461,8 @@ export default function CheckoutPage() {
       </section>
 
       <Footer />
+        </>
+      )}
     </main>
   );
 }

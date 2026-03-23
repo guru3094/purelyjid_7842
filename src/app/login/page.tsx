@@ -54,17 +54,6 @@ function LoginForm() {
         Sign in to place orders and track your purchases.
       </p>
 
-      {/* Demo credentials */}
-      <div className="mb-6 p-4 rounded-xl bg-[#FAF6F0] border border-[rgba(196,120,90,0.15)] space-y-1">
-        <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary mb-2">Demo Accounts</p>
-        <p className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Admin:</span> admin@purelyjid.com / admin123
-        </p>
-        <p className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Customer:</span> customer@example.com / customer123
-        </p>
-      </div>
-
       {error && (
         <div className="mb-5 flex items-start gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200">
           <Icon name="ExclamationCircleIcon" size={16} className="text-red-500 mt-0.5 shrink-0" />
@@ -132,10 +121,23 @@ function LoginForm() {
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{' '}
-        <Link href="/register" className="font-semibold text-primary hover:underline">
+        <Link href={`/register${redirect !== '/homepage' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`} className="font-semibold text-primary hover:underline">
           Create one
         </Link>
       </p>
+
+      {redirect === '/checkout' && (
+        <div className="mt-4 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-center">
+          <p className="text-xs text-amber-700">
+            <span className="font-semibold">Login required to checkout.</span>{' '}
+            New here?{' '}
+            <Link href="/register?redirect=/checkout" className="font-bold text-amber-800 hover:underline">
+              Register for free
+            </Link>{' '}
+            — it only takes a moment.
+          </p>
+        </div>
+      )}
 
       <p className="mt-3 text-center text-xs text-muted-foreground">
         Just browsing?{' '}
