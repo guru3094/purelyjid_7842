@@ -489,8 +489,8 @@ export default function AdminPage() {
       const checkAdmin = async () => {
         try {
           const supabase = createClient();
-          const { data } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
-          if (data?.role === 'admin') { setIsAdmin(true); fetchData(); }
+          const { data, error } = await supabase.rpc('get_my_role');
+          if (!error && data === 'admin') { setIsAdmin(true); fetchData(); }
           else router.push('/');
         } catch { router.push('/'); }
         finally { setCheckingRole(false); }
