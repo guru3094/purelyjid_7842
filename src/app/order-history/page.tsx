@@ -337,7 +337,7 @@ export default function OrderHistoryPage() {
                       {/* WhatsApp Query Button */}
                       <div className="flex gap-2 pt-1">
                         <a
-                          href={`https://wa.me/919999999999?text=${encodeURIComponent(`Hi PurelyJid! 👋 I have a query about my order #${order?.order_number} (₹${(order?.total / 100).toLocaleString('en-IN')}). Status: ${order?.status}. Could you help me? 🙏`)}`}
+                          href={`https://wa.me/919518770073?text=${encodeURIComponent(`Hi PurelyJid! 👋 I have a query about my order #${order?.order_number} (₹${(order?.total / 100).toLocaleString('en-IN')}). Status: ${order?.status}. Could you help me? 🙏`)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex-1 h-9 rounded-full bg-green-500 text-white text-[10px] font-semibold uppercase tracking-[0.15em] hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
@@ -348,7 +348,7 @@ export default function OrderHistoryPage() {
                           Query on WhatsApp
                         </a>
                         <a
-                          href={`https://wa.me/919999999999?text=${encodeURIComponent(`Hi PurelyJid! 🧾 Could you send me the invoice for order #${order?.order_number}? Total: ₹${(order?.total / 100).toLocaleString('en-IN')}. Payment ID: ${order?.payment_id || 'N/A'}. Thank you!`)}`}
+                          href={`https://wa.me/919518770073?text=${encodeURIComponent(`Hi PurelyJid! 🧾 Could you send me the invoice for order #${order?.order_number}? Total: ₹${(order?.total / 100).toLocaleString('en-IN')}. Payment ID: ${order?.payment_id || 'N/A'}. Thank you!`)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex-1 h-9 rounded-full border border-green-300 text-green-700 text-[10px] font-semibold uppercase tracking-[0.15em] hover:bg-green-50 transition-colors flex items-center justify-center gap-2"

@@ -200,7 +200,7 @@ function OrderConfirmationContent() {
                 View Orders
               </Link>
               <a
-                href={`https://wa.me/919999999999?text=${encodeURIComponent(`Hi PurelyJid! 🎉 I just placed order #${orderNumber}. Could you confirm the details and estimated delivery? Thank you!`)}`}
+                href={`https://wa.me/919518770073?text=${encodeURIComponent(`Hi PurelyJid! 🎉 I just placed order #${orderNumber}. Could you confirm the details and estimated delivery? Thank you!`)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 h-12 rounded-full bg-green-500 text-white text-xs font-semibold uppercase tracking-[0.2em] hover:bg-green-600 transition-colors duration-300 flex items-center justify-center gap-2"

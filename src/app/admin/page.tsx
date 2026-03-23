@@ -434,7 +434,7 @@ export default function AdminPage() {
   };
 
   const getOrderWhatsAppLink = (order: Order) => {
-    const phone = '919999999999';
+    const phone = '919518770073';
     const msg = encodeURIComponent(`Hi! I have a query about my order #${order.order_number}. Total: ₹${(order.total / 100).toLocaleString('en-IN')}`);
     return `https://wa.me/${phone}?text=${msg}`;
   };

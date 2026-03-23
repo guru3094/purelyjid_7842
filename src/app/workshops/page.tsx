@@ -183,7 +183,7 @@ export default function WorkshopsPage() {
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <a
-                href="https://wa.me/919999999999?text=Hi%20PurelyJid!%20I%27d%20like%20to%20book%20a%20workshop.%20Could%20you%20share%20available%20dates%3F"
+                href="https://wa.me/919518770073?text=Hi%20PurelyJid!%20I%27d%20like%20to%20book%20a%20workshop.%20Could%20you%20share%20available%20dates%3F"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-green-500 text-white text-xs font-semibold uppercase tracking-[0.2em] hover:bg-green-600 transition-colors"
@@ -194,7 +194,7 @@ export default function WorkshopsPage() {
                 WhatsApp Us
               </a>
               <a
-                href="tel:+919999999999"
+                href="tel:+919518770073"
                 className="inline-flex items-center gap-2 h-11 px-6 rounded-full border border-[rgba(196,120,90,0.3)] text-foreground text-xs font-semibold uppercase tracking-[0.2em] hover:border-primary hover:text-primary transition-colors"
               >
                 <Icon name="PhoneIcon" size={14} />

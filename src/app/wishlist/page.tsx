@@ -74,7 +74,7 @@ export default function WishlistPage() {
     const msg = encodeURIComponent(
       `Hi PurelyJid! 👋 I'm interested in "${item.product_name}" (₹${(item.product_price / 100).toLocaleString('en-IN')}) from my wishlist. Could you help me with availability and ordering? 🛍️`
     );
-    return `https://wa.me/919999999999?text=${msg}`;
+    return `https://wa.me/919518770073?text=${msg}`;
   };
 
   if (authLoading) {
