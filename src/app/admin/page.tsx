@@ -488,10 +488,13 @@ export default function AdminPage() {
       if (!user) { router.push('/login'); return; }
       const checkAdmin = async () => {
         try {
-          const supabase = createClient();
-          const { data, error } = await supabase.rpc('get_my_role');
-          if (!error && data === 'admin') { setIsAdmin(true); fetchData(); }
-          else router.push('/');
+          const userEmail = user?.email?.toLowerCase() ?? '';
+          if (userEmail === 'info@purelyjid.in') {
+            setIsAdmin(true);
+            fetchData();
+          } else {
+            router.push('/');
+          }
         } catch { router.push('/'); }
         finally { setCheckingRole(false); }
       };
