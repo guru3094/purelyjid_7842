@@ -8,35 +8,43 @@ const testimonials = [
 {
   id: 1,
   name: 'Sumit Jadhav',
-  location: 'Austin, TX',
+  location: 'Pune, India',
   rating: 5,
   text: "I absolutely loved the work! 🌟 The resin clock and the illuminated wedding lamp are both extremely creative and beautifully crafted. The attention to detail—right from the preserved flowers to the embedded pearls and lights—is impressive. It’s clear a lot of love and thought has gone into making these.The clock looks elegant and unique, perfect as a decor piece. And the glowing photo frame is not only visually stunning but also emotionally touching—it truly brings the memory to life! Highly recommended for anyone looking for personalized, and meaningful gifts. Excellent craftsmanship and creativity! 👏",
-  avatar: "https://logos-world.net/google-reviews-logo/#google_vignette",
+  avatar: "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png",
   product: 'Resin Wall Clock',
   verified: true
 },
 {
   id: 2,
-  name: 'Marcus Webb',
-  location: 'Chicago, IL',
+  name: 'Caroline Joseph',
+  location: 'Pune, India',
   rating: 5,
-  text: "Bought the Galaxy Geode Tray as a housewarming gift. The packaging alone was beautiful. My friends thought I spent $200 on it. Jida's work is seriously stunning.",
-  avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_1add8cc98-1772099540967.png",
-  avatarAlt: 'Marcus, a smiling Black man in his 30s',
-  product: 'Galaxy Geode Tray',
+  text: "I had such a lovely experience getting the wedding garland preserved in resin. The consultation felt really easy and comforting, and explaining to us about the after care. Design discussion was so nice, they even incorporated some of the changes I needed and it was done perfectly. The final process was beautiful and elegant. Definitely recommend to get your special moments preserved. Thank you so much Purely Jid 😊😃",
+  avatar: "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png",
+  product: 'Compartment Resin Varmala Frame',
   verified: true
 },
 {
   id: 3,
-  name: 'Camille Fontaine',
-  location: 'Brooklyn, NY',
+  name: 'Neha Nagade',
+  location: 'Pune, India',
   rating: 5,
-  text: "The DIY starter kit got me completely hooked. Clear instructions, quality materials, and the resin cured perfectly. I've now made 12 pieces and given them to everyone I know.",
-  avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_1c2e71842-1772194483270.png",
-  avatarAlt: 'Camille, a smiling woman with curly hair and bright eyes',
-  product: 'Complete Starter Kit',
+  text: "We had our wedding garlands preserved here, and the results are stunning. She is truly the best at what she does! We are so grateful to have our wedding memories kept alive forever in such a beautiful frame. Thank you so much for this incredible keepsake.",
+  avatar: "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png",
+  product: 'Rectangle Frame',
   verified: true
-}];
+}
+{id: 4,
+  name: 'Siddharth Kolap',
+  location: 'Pune, India',
+  rating: 5,
+  text: "I recently got some flowers preserved here, and I’m really happy with how the final product turned out. The resin work is clean, clear, and well-finished, and the flowers have been arranged very neatly. The whole process was smooth, and they handled everything professionally and Kept me updated through every step.
+If you’re looking to preserve something meaningful, this place does a really good job",
+  avatar: "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png",
+  product: 'Square Frame',
+  verified: true}
+];
 
 
 export default function TestimonialsCTASection() {
