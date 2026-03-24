@@ -39,8 +39,7 @@ const testimonials = [
   name: 'Siddharth Kolap',
   location: 'Pune, India',
   rating: 5,
-  text: "I recently got some flowers preserved here, and I’m really happy with how the final product turned out. The resin work is clean, clear, and well-finished, and the flowers have been arranged very neatly. The whole process was smooth, and they handled everything professionally and Kept me updated through every step.
-If you’re looking to preserve something meaningful, this place does a really good job",
+  text: "I recently got some flowers preserved here, and I’m really happy with how the final product turned out. The resin work is clean, clear, and well-finished, and the flowers have been arranged very neatly. The whole process was smooth, and they handled everything professionally and Kept me updated through every step. If you’re looking to preserve something meaningful, this place does a really good job",
   avatar: "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png",
   product: 'Square Frame',
   verified: true}
