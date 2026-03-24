@@ -7,7 +7,7 @@ import Icon from '@/components/ui/AppIcon';
 const testimonials = [
 {
   id: 1,
-  name: 'Priya Nair',
+  name: 'Sumit Jadhav',
   location: 'Austin, TX',
   rating: 5,
   text: "I absolutely loved the work! 🌟 The resin clock and the illuminated wedding lamp are both extremely creative and beautifully crafted. The attention to detail—right from the preserved flowers to the embedded pearls and lights—is impressive. It’s clear a lot of love and thought has gone into making these.The clock looks elegant and unique, perfect as a decor piece. And the glowing photo frame is not only visually stunning but also emotionally touching—it truly brings the memory to life! Highly recommended for anyone looking for personalized, and meaningful gifts. Excellent craftsmanship and creativity! 👏",
