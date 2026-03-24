@@ -10,10 +10,14 @@ const testimonials = [
   name: 'Priya Nair',
   location: 'Austin, TX',
   rating: 5,
-  text: "I ordered the Ocean Wave pendant as a birthday gift for my sister and she literally cried. The quality is unreal — it looks even better in person. Already ordered two more for myself.",
+  text: "I absolutely loved the work! 🌟 The resin clock and the illuminated wedding lamp are both extremely creative and beautifully crafted. The attention to detail—right from the preserved flowers to the embedded pearls and lights—is impressive. It’s clear a lot of love and thought has gone into making these.
+
+The clock looks elegant and unique, perfect as a decor piece. And the glowing photo frame is not only visually stunning but also emotionally touching—it truly brings the memory to life!
+
+Highly recommended for anyone looking for personalized, and meaningful gifts. Excellent craftsmanship and creativity! 👏",
   avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_1bac54d6b-1772144003159.png",
   avatarAlt: 'Priya, a smiling South Asian woman with dark hair',
-  product: 'Aurora Resin Pendant',
+  product: 'Resin Wall Clock',
   verified: true
 },
 {
