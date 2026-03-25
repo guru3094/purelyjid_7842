@@ -508,6 +508,17 @@ export default function AdminPage() {
       if (customRes.data) setCustomProducts(customRes.data);
       if (enquiriesRes.data) setCustomEnquiries(enquiriesRes.data);
       if (pincodesRes.data) setPincodes(pincodesRes.data);
+
+      // Fetch policy pages content
+      const [shippingRes, privacyRes, termsRes] = await Promise.all([
+        supabase.from('story_content').select('body').eq('section_key', 'shipping_policy').single(),
+        supabase.from('story_content').select('body').eq('section_key', 'privacy_policy').single(),
+        supabase.from('story_content').select('body').eq('section_key', 'terms_conditions').single(),
+      ]);
+      if (shippingRes.data?.body) setShippingContent(shippingRes.data.body);
+      if (privacyRes.data?.body) setPrivacyContent(privacyRes.data.body);
+      if (termsRes.data?.body) setTermsContent(termsRes.data.body);
+
       // Fetch workshops
       const supabase2 = createClient();
       const workshopsRes = await supabase2.from('workshops').select('*').order('created_at', { ascending: false });
