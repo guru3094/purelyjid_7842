@@ -511,6 +511,15 @@ export default function AdminPage() {
     checkAdminSession();
   }, []);
 
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/admin-auth/logout', { method: 'POST' });
+    } catch {
+      // ignore errors
+    }
+    router.push('/admin-panel/login');
+  };
+
   // ─── Bulk CSV Upload ─────────────────────────────────────────────────────────
 
   const parseCsvProducts = (text: string) => {
@@ -1282,6 +1291,13 @@ export default function AdminPage() {
               className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-foreground text-xs font-semibold uppercase tracking-[0.15em] hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
             >
               Refresh
+            </button>
+            <button
+              onClick={handleLogout}
+              className="h-10 px-5 rounded-full border border-red-200 text-red-500 text-xs font-semibold uppercase tracking-[0.15em] hover:bg-red-50 hover:border-red-400 transition-colors flex items-center gap-2"
+            >
+              <Icon name="ArrowRightOnRectangleIcon" size={14} />
+              Logout
             </button>
           </div>
         </div>
