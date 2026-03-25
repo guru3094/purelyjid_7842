@@ -406,6 +406,7 @@ export default function ProductsGrid() {
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                 {visible.map((product) => (
                   <div key={product.id} className="product-card group">
+                    <Link href={`/products/${product.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`} className="block">
                     <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-white shadow-card mb-4">
                       <AppImage
                         src={product.image}
@@ -488,7 +489,7 @@ export default function ProductsGrid() {
                         </div>
                         {product.inStock ? (
                           <button
-                            onClick={() => handleAddToCart(product)}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleAddToCart(product); }}
                             aria-label={`Add ${product.name} to cart`}
                             className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-[0.15em] hover:bg-primary hover:text-white transition-all duration-200"
                           >
@@ -500,6 +501,7 @@ export default function ProductsGrid() {
                         )}
                       </div>
                     </div>
+                    </Link>
                   </div>
                 ))}
               </div>

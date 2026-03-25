@@ -53,6 +53,7 @@ interface Product {
   name: string;
   slug: string;
   description: string;
+  short_description?: string;
   price: number;
   original_price: number | null;
   category_id: string | null;
@@ -61,6 +62,14 @@ interface Product {
   badge_color: string;
   image_url: string | null;
   alt_text: string;
+  additional_images?: { url: string; alt: string }[];
+  specifications?: { label: string; value: string }[];
+  care_instructions?: string;
+  tags?: string[];
+  sku?: string;
+  weight?: string;
+  dimensions?: string;
+  is_featured?: boolean;
   in_stock: boolean;
   is_active: boolean;
   display_order: number;
@@ -243,19 +252,30 @@ const DEFAULT_STORY: StoryContent = {
 
 const EMPTY_PRODUCT = {
   name: '',
+  slug: '',
   description: '',
+  short_description: '',
   price: 0,
   original_price: null as number | null,
   stock_quantity: 0,
+  low_stock_threshold: 5,
   sku: '',
-  images: [] as { url: string; alt: string }[],
-  is_active: true,
-  is_featured: false,
-  weight: null as number | null,
-  dimensions: null as string | null,
-  category_ids: [] as string[],
-  theme_id: null as string | null,
+  weight: '',
+  dimensions: '',
+  material: '',
+  badge: null as string | null,
+  badge_color: 'bg-primary',
+  image_url: null as string | null,
+  alt_text: '',
+  additional_images: [] as { url: string; alt: string }[],
+  specifications: [] as { label: string; value: string }[],
+  care_instructions: '',
   tags: [] as string[],
+  is_featured: false,
+  is_active: true,
+  in_stock: true,
+  display_order: 0,
+  category_id: null as string | null,
 };
 
 const EMPTY_COUPON = {
@@ -543,19 +563,34 @@ export default function AdminPage() {
 
     lines.slice(1).forEach((line, i) => {
       if (!line.trim()) return;
-      const vals = line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
+      // Handle quoted fields with commas inside
+      const vals: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let ci = 0; ci < line.length; ci++) {
+        const ch = line[ci];
+        if (ch === '"') { inQuotes = !inQuotes; }
+        else if (ch === ',' && !inQuotes) { vals.push(current.trim()); current = ''; }
+        else { current += ch; }
+      }
+      vals.push(current.trim());
+
       const row: Record<string, string> = {};
-      headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });
+      headers.forEach((h, idx) => { row[h] = (vals[idx] || '').replace(/^"|"$/g, ''); });
 
       const price = Math.round(parseFloat(row['price'] || '0') * 100);
       if (isNaN(price) || price <= 0) { errors.push(`Row ${i + 2}: Invalid price "${row['price']}"`); return; }
       if (!row['name']?.trim()) { errors.push(`Row ${i + 2}: Name is required`); return; }
 
       const slug = (row['slug'] || row['name']).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const tagsRaw = row['tags'] || '';
+      const tags = tagsRaw ? tagsRaw.split('|').map((t: string) => t.trim()).filter(Boolean) : [];
+
       products.push({
         name: row['name'],
         slug,
         description: row['description'] || '',
+        short_description: row['short_description'] || '',
         price,
         original_price: row['original_price'] ? Math.round(parseFloat(row['original_price']) * 100) : null,
         category_id: null,
@@ -564,6 +599,14 @@ export default function AdminPage() {
         badge_color: row['badge_color'] || 'bg-primary',
         image_url: row['image_url'] || '',
         alt_text: row['alt_text'] || row['name'],
+        sku: row['sku'] || '',
+        weight: row['weight'] || '',
+        dimensions: row['dimensions'] || '',
+        care_instructions: row['care_instructions'] || '',
+        tags,
+        additional_images: [],
+        specifications: [],
+        is_featured: (row['is_featured'] || 'false').toLowerCase() === 'true',
         in_stock: (row['in_stock'] || 'true').toLowerCase() !== 'false',
         is_active: (row['is_active'] || 'true').toLowerCase() !== 'false',
         display_order: parseInt(row['display_order'] || '0', 10) || 0,
@@ -606,8 +649,8 @@ export default function AdminPage() {
   };
 
   const downloadCsvTemplate = () => {
-    const headers = 'name,slug,description,price,original_price,material,badge,image_url,alt_text,in_stock,is_active,display_order,stock_quantity,low_stock_threshold';
-    const example = 'Aurora Pendant,aurora-pendant,Beautiful resin pendant,38.00,48.00,Resin + Crystal,Bestseller,https://example.com/img.jpg,Aurora pendant on white background,true,true,1,50,5';
+    const headers = 'name,slug,description,short_description,price,original_price,material,badge,badge_color,image_url,alt_text,sku,weight,dimensions,care_instructions,tags,in_stock,is_active,is_featured,display_order,stock_quantity,low_stock_threshold';
+    const example = 'Aurora Pendant,aurora-pendant,"Beautiful handcrafted resin pendant with aurora swirls","Handcrafted aurora resin pendant",3800,4800,Resin + Crystal,Bestseller,bg-primary,https://example.com/img.jpg,"Aurora pendant on white background",ARP-001,15g,"3 x 3 x 0.5 cm","Avoid sunlight. Clean with soft cloth.","pendant,jewelry,resin",true,true,false,1,50,5';
     const blob = new Blob([headers + '\n' + example], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = 'products_template.csv'; a.click();
@@ -1676,7 +1719,7 @@ export default function AdminPage() {
                           {product.is_active ? 'Hide' : 'Show'}
                         </button>
                         <button
-                          onClick={() => { setEditingProduct(product); setProductForm({ name: product.name, slug: product.slug, description: product.description, price: product.price, original_price: product.original_price, category_id: product.category_id, material: product.material, badge: product.badge, badge_color: product.badge_color, image_url: product.image_url, alt_text: product.alt_text, in_stock: product.in_stock, is_active: product.is_active, display_order: product.display_order, stock_quantity: product.stock_quantity, low_stock_threshold: product.low_stock_threshold }); setProductImageFile(null); setProductImagePreview(product.image_url || ''); setShowProductModal(true); }}
+                          onClick={() => { setEditingProduct(product); setProductForm({ name: product.name, slug: product.slug, description: product.description, short_description: product.short_description || '', price: product.price, original_price: product.original_price, category_id: product.category_id, material: product.material, badge: product.badge, badge_color: product.badge_color, image_url: product.image_url, alt_text: product.alt_text, additional_images: product.additional_images || [], specifications: product.specifications || [], care_instructions: product.care_instructions || '', tags: product.tags || [], sku: product.sku || '', weight: product.weight || '', dimensions: product.dimensions || '', is_featured: product.is_featured || false, in_stock: product.in_stock, is_active: product.is_active, display_order: product.display_order, stock_quantity: product.stock_quantity, low_stock_threshold: product.low_stock_threshold }); setProductImageFile(null); setProductImagePreview(product.image_url || ''); setShowProductModal(true); }}
                           className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                         >
                           <Icon name="PencilIcon" size={12} />
@@ -1705,12 +1748,15 @@ export default function AdminPage() {
               {/* Product Modal */}
               {showProductModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                     <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
                       <h3 className="font-display italic text-lg font-semibold text-foreground">{editingProduct ? 'Edit Product' : 'Add Product'}</h3>
                       <button onClick={() => setShowProductModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
                     </div>
-                    <div className="p-6 space-y-4">
+                    <div className="p-6 space-y-5">
+                      {/* Section: Basic Info */}
+                      <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary border-b border-[rgba(196,120,90,0.1)] pb-2">Basic Information</p>
+
                       {/* Product Image Upload */}
                       <div>
                         <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Product Image</label>
@@ -1720,21 +1766,15 @@ export default function AdminPage() {
                           style={{ height: productImagePreview ? 160 : 80 }}
                         >
                           {productImagePreview ? (
-                            <img src={productImagePreview} alt={productImagePreview} className="w-full h-full object-cover" />
+                            <img src={productImagePreview} alt="Product preview" className="w-full h-full object-cover" />
                           ) : (
-                            <div className="flex flex-col items-center justify-center gap-2">
+                            <div className="flex flex-col items-center justify-center h-full gap-2">
                               <Icon name="PhotoIcon" size={22} className="text-muted-foreground" />
                               <span className="text-xs text-muted-foreground">Click to upload image</span>
                             </div>
                           )}
                         </div>
-                        <input
-                          ref={productImageInputRef}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleProductImageSelect}
-                        />
+                        <input ref={productImageInputRef} type="file" accept="image/*" className="hidden" onChange={handleProductImageSelect} />
                         {productImageFile && (
                           <p className="mt-1.5 text-xs text-primary font-medium flex items-center gap-1">
                             <Icon name="CheckCircleIcon" size={12} />
@@ -1742,48 +1782,161 @@ export default function AdminPage() {
                           </p>
                         )}
                       </div>
-                      {[
-                        { label: 'Product Name *', key: 'name', placeholder: 'e.g. Aurora Resin Pendant' },
-                        { label: 'Image URL', key: 'image_url', placeholder: 'https://... (or upload above)' },
-                        { label: 'Alt Text', key: 'alt_text', placeholder: 'Describe the image' },
-                        { label: 'Material', key: 'material', placeholder: 'e.g. Resin + Crystal' },
-                        { label: 'Badge', key: 'badge', placeholder: 'e.g. Bestseller' },
-                      ].map(({ label, key, placeholder }) => (
-                        <div key={key}>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">{label}</label>
-                          <input type="text" value={(productForm as any)[key] || ''} onChange={(e) => setProductForm((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
-                        </div>
-                      ))}
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Product Name *</label>
+                        <input type="text" value={(productForm as any).name || ''} onChange={(e) => setProductForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Aurora Resin Pendant" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Short Description</label>
+                        <input type="text" value={(productForm as any).short_description || ''} onChange={(e) => setProductForm((p) => ({ ...p, short_description: e.target.value }))} placeholder="One-line summary shown on product detail page" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Full Description</label>
+                        <textarea value={(productForm as any).description || ''} onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))} rows={4} placeholder="Detailed product description..." className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none" />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Image URL</label>
+                        <input type="text" value={(productForm as any).image_url || ''} onChange={(e) => setProductForm((p) => ({ ...p, image_url: e.target.value }))} placeholder="https://... (or upload above)" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Alt Text</label>
+                        <input type="text" value={(productForm as any).alt_text || ''} onChange={(e) => setProductForm((p) => ({ ...p, alt_text: e.target.value }))} placeholder="Describe the image for accessibility" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+
+                      {/* Section: Pricing & Inventory */}
+                      <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary border-b border-[rgba(196,120,90,0.1)] pb-2 pt-2">Pricing & Inventory</p>
+
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Price (paise) *</label>
-                          <input type="number" min="0" value={productForm.price} onChange={(e) => setProductForm((p) => ({ ...p, price: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                          <input type="number" min="0" value={(productForm as any).price || 0} onChange={(e) => setProductForm((p) => ({ ...p, price: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                          <p className="text-[10px] text-muted-foreground mt-1">₹{(((productForm as any).price || 0) / 100).toFixed(2)}</p>
                         </div>
                         <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Stock Qty</label>
-                          <input type="number" min="0" value={productForm.stock_quantity ?? 0} onChange={(e) => setProductForm((p) => ({ ...p, stock_quantity: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Original Price (paise)</label>
+                          <input type="number" min="0" value={(productForm as any).original_price || ''} onChange={(e) => setProductForm((p) => ({ ...p, original_price: e.target.value ? Number(e.target.value) : null }))} placeholder="Leave blank if no discount" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Description</label>
-                        <textarea value={productForm.description} onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))} rows={3} className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none" />
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Stock Qty</label>
+                          <input type="number" min="0" value={(productForm as any).stock_quantity ?? 0} onChange={(e) => setProductForm((p) => ({ ...p, stock_quantity: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Low Stock Alert</label>
+                          <input type="number" min="0" value={(productForm as any).low_stock_threshold ?? 5} onChange={(e) => setProductForm((p) => ({ ...p, low_stock_threshold: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">SKU</label>
+                          <input type="text" value={(productForm as any).sku || ''} onChange={(e) => setProductForm((p) => ({ ...p, sku: e.target.value }))} placeholder="e.g. ARP-001" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
                       </div>
-                      <div className="flex gap-4">
-                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={productForm.is_active} onChange={(e) => setProductForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" /><span className="text-xs font-semibold text-foreground">Active</span></label>
-                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={productForm.in_stock} onChange={(e) => setProductForm((p) => ({ ...p, in_stock: e.target.checked }))} className="w-4 h-4 accent-primary" /><span className="text-xs font-semibold text-foreground">In Stock</span></label>
+
+                      {/* Section: Product Details */}
+                      <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary border-b border-[rgba(196,120,90,0.1)] pb-2 pt-2">Product Details</p>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Material</label>
+                          <input type="text" value={(productForm as any).material || ''} onChange={(e) => setProductForm((p) => ({ ...p, material: e.target.value }))} placeholder="e.g. Resin + Crystal" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Badge</label>
+                          <input type="text" value={(productForm as any).badge || ''} onChange={(e) => setProductForm((p) => ({ ...p, badge: e.target.value || null }))} placeholder="e.g. Bestseller, New" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Weight</label>
+                          <input type="text" value={(productForm as any).weight || ''} onChange={(e) => setProductForm((p) => ({ ...p, weight: e.target.value }))} placeholder="e.g. 150g" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Dimensions</label>
+                          <input type="text" value={(productForm as any).dimensions || ''} onChange={(e) => setProductForm((p) => ({ ...p, dimensions: e.target.value }))} placeholder="e.g. 10 x 5 x 2 cm" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Tags <span className="normal-case font-normal">(comma-separated)</span></label>
+                        <input
+                          type="text"
+                          value={Array.isArray((productForm as any).tags) ? (productForm as any).tags.join(', ') : ''}
+                          onChange={(e) => setProductForm((p) => ({ ...p, tags: e.target.value.split(',').map((t: string) => t.trim()).filter(Boolean) }))}
+                          placeholder="e.g. pendant, jewelry, resin, handmade"
+                          className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Specifications <span className="normal-case font-normal">(one per line: Label: Value)</span></label>
+                        <textarea
+                          value={Array.isArray((productForm as any).specifications) ? (productForm as any).specifications.map((s: { label: string; value: string }) => `${s.label}: ${s.value}`).join('\n') : ''}
+                          onChange={(e) => {
+                            const specs = e.target.value.split('\n').map((line: string) => {
+                              const colonIdx = line.indexOf(':');
+                              if (colonIdx === -1) return null;
+                              return { label: line.slice(0, colonIdx).trim(), value: line.slice(colonIdx + 1).trim() };
+                            }).filter(Boolean) as { label: string; value: string }[];
+                            setProductForm((p) => ({ ...p, specifications: specs }));
+                          }}
+                          rows={4}
+                          placeholder={"Material: UV Resin + Crystal\nChain Length: 18 inches\nPendant Size: 3 cm diameter"}
+                          className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Care Instructions</label>
+                        <textarea
+                          value={(productForm as any).care_instructions || ''}
+                          onChange={(e) => setProductForm((p) => ({ ...p, care_instructions: e.target.value }))}
+                          rows={3}
+                          placeholder="e.g. Avoid prolonged exposure to sunlight. Clean gently with a soft cloth."
+                          className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none"
+                        />
+                      </div>
+
+                      {/* Section: Visibility */}
+                      <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary border-b border-[rgba(196,120,90,0.1)] pb-2 pt-2">Visibility & Status</p>
+
+                      <div className="flex flex-wrap gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={(productForm as any).is_active} onChange={(e) => setProductForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                          <span className="text-xs font-semibold text-foreground">Active (visible to customers)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={(productForm as any).in_stock} onChange={(e) => setProductForm((p) => ({ ...p, in_stock: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                          <span className="text-xs font-semibold text-foreground">In Stock</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={(productForm as any).is_featured || false} onChange={(e) => setProductForm((p) => ({ ...p, is_featured: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                          <span className="text-xs font-semibold text-foreground">Featured</span>
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Display Order</label>
+                        <input type="number" min="0" value={(productForm as any).display_order || 0} onChange={(e) => setProductForm((p) => ({ ...p, display_order: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
                       </div>
                     </div>
                     <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
                       <button onClick={() => setShowProductModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
                       <button
-                        disabled={savingProduct || !productForm.name?.trim()}
+                        disabled={savingProduct || !(productForm as any).name?.trim()}
                         onClick={async () => {
-                          if (!productForm.name?.trim()) { showToast('Product name is required.', 'error'); return; }
+                          if (!(productForm as any).name?.trim()) { showToast('Product name is required.', 'error'); return; }
                           setSavingProduct(true);
                           try {
                             const supabase = createClient();
-                            const slug = productForm.slug || productForm.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-                            const payload = { ...productForm, slug, updated_at: new Date().toISOString() };
+                            const slug = (productForm as any).slug || (productForm as any).name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+                            const payload = { ...(productForm as any), slug, updated_at: new Date().toISOString() };
                             if (editingProduct) {
                               await supabase.from('products').update(payload).eq('id', editingProduct.id);
                               showToast('Product updated.', 'success');
@@ -1798,7 +1951,7 @@ export default function AdminPage() {
                         }}
                         className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
                       >
-                        {savingProduct ? 'Saving…' : editingProduct ? 'Update' : 'Add Product'}
+                        {savingProduct ? 'Saving…' : editingProduct ? 'Update Product' : 'Add Product'}
                       </button>
                     </div>
                   </div>
@@ -1851,7 +2004,7 @@ export default function AdminPage() {
                           setShowStoryModal(true);
                         }}
                         className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                      >
+                        >
                         <Icon name="PencilIcon" size={12} />
                       </button>
                       <button
