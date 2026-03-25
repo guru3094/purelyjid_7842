@@ -55,7 +55,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { cartItems, itemCount, subtotal, clearCart } = useCart();
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [paymentError, setPaymentError] = useState('');
@@ -70,13 +70,6 @@ export default function CheckoutPage() {
     pincode: '',
   });
   const [errors, setErrors] = useState<Partial<FormData>>({});
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) {
-      setIsLoading(false);
-    }
-  }, [user, authLoading, router]);
 
   // Brief loading for hydration
   useEffect(() => {
@@ -241,14 +234,6 @@ export default function CheckoutPage() {
     <main className="bg-[#FAF6F0] min-h-screen overflow-x-hidden">
       <Header />
 
-      {/* Auth redirect loading */}
-      {(authLoading || (!user && !authLoading)) ? (
-        <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-          <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-          <p className="text-sm text-muted-foreground">Redirecting to login…</p>
-        </div>
-      ) : (
-        <>
       {/* Page Header */}
       <section className="pt-32 pb-10 px-6">
         <div className="mx-auto max-w-7xl">
@@ -480,8 +465,6 @@ export default function CheckoutPage() {
       </section>
 
       <Footer />
-        </>
-      )}
     </main>
   );
 }
