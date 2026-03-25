@@ -7,7 +7,6 @@ import Header from '@/components/Header';
 import Icon from '@/components/ui/AppIcon';
 
 import { AdminStatSkeleton } from '@/components/ui/Skeleton';
-import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { createClient } from '@/lib/supabase/client';
 
@@ -261,7 +260,7 @@ const EMPTY_PRODUCT = {
 
 const EMPTY_COUPON = {
   code: '',
-  discount_type: 'percentage' as 'percentage' | 'fixed',
+  discount_type: 'percentage\' as \'percentage\' | \'fixed',
   discount_value: 0,
   min_order_amount: null as number | null,
   max_discount_amount: null as number | null,
@@ -282,7 +281,6 @@ const EMPTY_COURIER = {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function AdminPage() {
-  const { user, loading: authLoading } = useAuth();
   const { showToast } = useToast();
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -493,23 +491,24 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    if (!authLoading) {
-      if (!user) { router.push('/login'); return; }
-      const checkAdmin = async () => {
-        try {
-          const userEmail = user?.email?.toLowerCase() ?? '';
-          if (userEmail === 'info@purelyjid.in') {
-            setIsAdmin(true);
-            fetchData();
-          } else {
-            router.push('/');
-          }
-        } catch { router.push('/'); }
-        finally { setCheckingRole(false); }
-      };
-      checkAdmin();
-    }
-  }, [user, authLoading]);
+    const checkAdminSession = async () => {
+      try {
+        // Check admin_session cookie via a lightweight API call
+        const res = await fetch('/api/admin-auth/check', { method: 'GET' });
+        if (res.ok) {
+          setIsAdmin(true);
+          fetchData();
+        } else {
+          router.push('/admin-panel/login');
+        }
+      } catch {
+        router.push('/admin-panel/login');
+      } finally {
+        setCheckingRole(false);
+      }
+    };
+    checkAdminSession();
+  }, []);
 
   // ─── Bulk CSV Upload ─────────────────────────────────────────────────────────
 
@@ -1194,7 +1193,7 @@ export default function AdminPage() {
 
   // ── Loading / Guard ─────────────────────────────────────────────────────────
 
-  if (authLoading || checkingRole) {
+  if (checkingRole) {
     return (
       <main className="bg-[#FAF6F0] min-h-screen">
         <Header />
@@ -2006,7 +2005,7 @@ export default function AdminPage() {
                 }}
                 className="px-4 py-2 rounded-full bg-primary text-white hover:bg-primary/80 transition"
               >
-                Fetch Reviews
+                {fetchingReviews ? 'Fetching…' : 'Fetch Reviews'}
               </button>
               {/* reviews display below */}
               {fetchingReviews && <p className="mt-4 text-center">Fetching reviews...</p>}

@@ -3,30 +3,34 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // Protect /admin route (but not /admin-panel which is open)
-  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin-panel')) {
+  // Protect /admin-panel routes (except the login page itself)
+  if (pathname.startsWith('/admin-panel') && !pathname.startsWith('/admin-panel/login')) {
     const adminSession = request.cookies.get('admin_session');
-
     if (!adminSession?.value) {
       const url = request.nextUrl.clone();
-      url.pathname = '/login';
-      url.searchParams.set('redirect', pathname);
+      url.pathname = '/admin-panel/login';
       return NextResponse.redirect(url);
     }
-
-    // Validate session cookie
     try {
-      const session = JSON.parse(adminSession.value);
-      if (!session?.email) {
+      const parsed = JSON.parse(adminSession.value);
+      if (!parsed?.email) {
         const url = request.nextUrl.clone();
-        url.pathname = '/login';
-        url.searchParams.set('redirect', pathname);
+        url.pathname = '/admin-panel/login';
         return NextResponse.redirect(url);
       }
     } catch {
       const url = request.nextUrl.clone();
-      url.pathname = '/login';
-      url.searchParams.set('redirect', pathname);
+      url.pathname = '/admin-panel/login';
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // Protect /admin routes (legacy — keep for backward compat)
+  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin-panel')) {
+    const adminSession = request.cookies.get('admin_session');
+    if (!adminSession?.value) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/admin-panel/login';
       return NextResponse.redirect(url);
     }
   }
