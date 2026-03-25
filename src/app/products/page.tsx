@@ -3,7 +3,6 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ProductsHero from './components/ProductsHero';
 import ProductsGrid from './components/ProductsGrid';
-import ProductReviews from './components/ProductReviews';
 import GoogleReviewsSection from './components/GoogleReviewsSection';
 
 export default function ProductsPage() {
@@ -15,7 +14,6 @@ export default function ProductsPage() {
         <ProductsGrid />
       </Suspense>
       <GoogleReviewsSection />
-      <ProductReviews productId={1} productName="PurelyJid Products" />
       <Footer />
     </main>
   );

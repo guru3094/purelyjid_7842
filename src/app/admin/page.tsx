@@ -213,7 +213,7 @@ interface DeliveryPincode {
   extra_charge: number;
 }
 
-type Tab = 'overview' | 'analytics' | 'orders' | 'products' | 'inventory' | 'coupons' | 'categories' | 'themes' | 'couriers' | 'story' | 'users' | 'google-reviews' | 'invoices' | 'vyaapar' | 'shop' | 'collections' | 'workshops-admin' | 'custom-products-admin' | 'pincodes' | 'brand-templates';
+type Tab = 'overview' | 'analytics' | 'orders' | 'products' | 'inventory' | 'coupons' | 'categories' | 'themes' | 'couriers' | 'story' | 'users' | 'google-reviews' | 'invoices' | 'vyaapar' | 'shop' | 'collections' | 'workshops-admin' | 'custom-products-admin' | 'pincodes' | 'brand-templates' | 'shipping-policy' | 'privacy-policy' | 'terms-conditions';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -411,6 +411,14 @@ export default function AdminPage() {
   const [savingStory, setSavingStory] = useState(false);
   const [editingStory, setEditingStory] = useState(false);
   const [showStoryModal, setShowStoryModal] = useState(false);
+
+  // Policy Pages
+  const [shippingContent, setShippingContent] = useState('');
+  const [privacyContent, setPrivacyContent] = useState('');
+  const [termsContent, setTermsContent] = useState('');
+  const [savingShipping, setSavingShipping] = useState(false);
+  const [savingPrivacy, setSavingPrivacy] = useState(false);
+  const [savingTerms, setSavingTerms] = useState(false);
 
   // Inventory
   const [updatingStock, setUpdatingStock] = useState<string | null>(null);
@@ -1251,6 +1259,9 @@ export default function AdminPage() {
     { id: 'custom-products-admin', label: `Custom Products (${customProducts.length})`, icon: 'SparklesIcon' },
     { id: 'brand-templates', label: 'Brand Templates', icon: 'SwatchIcon' },
     { id: 'users', label: `Users (${users.length})`, icon: 'UsersIcon' },
+    { id: 'shipping-policy', label: 'Shipping Policy', icon: 'TruckIcon' },
+    { id: 'privacy-policy', label: 'Privacy Policy', icon: 'ShieldCheckIcon' },
+    { id: 'terms-conditions', label: 'Terms & Conditions', icon: 'DocumentTextIcon' },
   ];
 
   const inventoryProducts = products.filter((p) =>
@@ -3230,6 +3241,132 @@ export default function AdminPage() {
                       </span>
                     </div>
                   ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Shipping Policy Tab ── */}
+          {activeTab === 'shipping-policy' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Shipping Policy</h2>
+                <a href="/shipping" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                  <Icon name="ArrowTopRightOnSquareIcon" size={13} />
+                  View Live Page
+                </a>
+              </div>
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                <p className="text-xs text-muted-foreground mb-4">Edit the content of your Shipping Policy page. Use plain text or basic HTML.</p>
+                <textarea
+                  value={shippingContent}
+                  onChange={(e) => setShippingContent(e.target.value)}
+                  rows={20}
+                  placeholder="Enter your shipping policy content here..."
+                  className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-y font-mono"
+                />
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Changes here are saved for reference. Update <code className="bg-accent-cream px-1 rounded text-[11px]">src/app/shipping/page.tsx</code> to reflect on the live page.</p>
+                  <button
+                    onClick={async () => {
+                      setSavingShipping(true);
+                      try {
+                        const supabase = createClient();
+                        await supabase.from('story_content').upsert({ section_key: 'shipping_policy', title: 'Shipping Policy', body: shippingContent, subtitle: '', image_url: '', image_alt: '', quote: '', quote_author: '', extra_data: {} }, { onConflict: 'section_key' });
+                        showToast('Shipping policy saved!', 'success');
+                      } catch (err: any) {
+                        showToast(err?.message || 'Failed to save.', 'error');
+                      } finally { setSavingShipping(false); }
+                    }}
+                    disabled={savingShipping}
+                    className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
+                  >
+                    {savingShipping ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Privacy Policy Tab ── */}
+          {activeTab === 'privacy-policy' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Privacy Policy</h2>
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                  <Icon name="ArrowTopRightOnSquareIcon" size={13} />
+                  View Live Page
+                </a>
+              </div>
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                <p className="text-xs text-muted-foreground mb-4">Edit the content of your Privacy Policy page. Use plain text or basic HTML.</p>
+                <textarea
+                  value={privacyContent}
+                  onChange={(e) => setPrivacyContent(e.target.value)}
+                  rows={20}
+                  placeholder="Enter your privacy policy content here..."
+                  className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-y font-mono"
+                />
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Changes here are saved for reference. Update <code className="bg-accent-cream px-1 rounded text-[11px]">src/app/privacy/page.tsx</code> to reflect on the live page.</p>
+                  <button
+                    onClick={async () => {
+                      setSavingPrivacy(true);
+                      try {
+                        const supabase = createClient();
+                        await supabase.from('story_content').upsert({ section_key: 'privacy_policy', title: 'Privacy Policy', body: privacyContent, subtitle: '', image_url: '', image_alt: '', quote: '', quote_author: '', extra_data: {} }, { onConflict: 'section_key' });
+                        showToast('Privacy policy saved!', 'success');
+                      } catch (err: any) {
+                        showToast(err?.message || 'Failed to save.', 'error');
+                      } finally { setSavingPrivacy(false); }
+                    }}
+                    disabled={savingPrivacy}
+                    className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
+                  >
+                    {savingPrivacy ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Terms & Conditions Tab ── */}
+          {activeTab === 'terms-conditions' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Terms &amp; Conditions</h2>
+                <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                  <Icon name="ArrowTopRightOnSquareIcon" size={13} />
+                  View Live Page
+                </a>
+              </div>
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                <p className="text-xs text-muted-foreground mb-4">Edit the content of your Terms &amp; Conditions page. Use plain text or basic HTML.</p>
+                <textarea
+                  value={termsContent}
+                  onChange={(e) => setTermsContent(e.target.value)}
+                  rows={20}
+                  placeholder="Enter your terms and conditions content here..."
+                  className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-y font-mono"
+                />
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Changes here are saved for reference. Update <code className="bg-accent-cream px-1 rounded text-[11px]">src/app/terms/page.tsx</code> to reflect on the live page.</p>
+                  <button
+                    onClick={async () => {
+                      setSavingTerms(true);
+                      try {
+                        const supabase = createClient();
+                        await supabase.from('story_content').upsert({ section_key: 'terms_conditions', title: 'Terms & Conditions', body: termsContent, subtitle: '', image_url: '', image_alt: '', quote: '', quote_author: '', extra_data: {} }, { onConflict: 'section_key' });
+                        showToast('Terms & Conditions saved!', 'success');
+                      } catch (err: any) {
+                        showToast(err?.message || 'Failed to save.', 'error');
+                      } finally { setSavingTerms(false); }
+                    }}
+                    disabled={savingTerms}
+                    className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
+                  >
+                    {savingTerms ? 'Saving…' : 'Save'}
+                  </button>
                 </div>
               </div>
             </div>
