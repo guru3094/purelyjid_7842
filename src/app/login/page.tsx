@@ -119,26 +119,6 @@ function LoginForm() {
         </button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{' '}
-        <Link href={`/register${redirect !== '/homepage' ? `?redirect=${encodeURIComponent(redirect)}` : ''}`} className="font-semibold text-primary hover:underline">
-          Create one
-        </Link>
-      </p>
-
-      {redirect === '/checkout' && (
-        <div className="mt-4 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-center">
-          <p className="text-xs text-amber-700">
-            <span className="font-semibold">Login required to checkout.</span>{' '}
-            New here?{' '}
-            <Link href="/register?redirect=/checkout" className="font-bold text-amber-800 hover:underline">
-              Register for free
-            </Link>{' '}
-            — it only takes a moment.
-          </p>
-        </div>
-      )}
-
       <p className="mt-3 text-center text-xs text-muted-foreground">
         Just browsing?{' '}
         <Link href="/products" className="font-semibold text-foreground hover:text-primary transition-colors">

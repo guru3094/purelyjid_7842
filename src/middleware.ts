@@ -14,6 +14,8 @@ function injectTokenFromHeader(request: NextRequest): void {
   request.cookies.set(`sb-${getProjectRef()}-auth-token`, token);
 }
 
+const ADMIN_EMAIL = 'Info@purelyjid.in';
+
 export async function middleware(request: NextRequest) {
   injectTokenFromHeader(request);
   let supabaseResponse = NextResponse.next({ request });
@@ -38,16 +40,25 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Protect checkout and order-history routes
-  if (!user && (
-    request.nextUrl.pathname.startsWith('/checkout') ||
-    request.nextUrl.pathname.startsWith('/order-history') ||
-    request.nextUrl.pathname.startsWith('/admin')
-  )) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('redirect', request.nextUrl.pathname);
-    return NextResponse.redirect(url);
+  const pathname = request.nextUrl.pathname;
+
+  // Protect admin routes — only allow the designated admin email
+  if (pathname.startsWith('/admin') || pathname.startsWith('/admin-panel')) {
+    if (!user) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.searchParams.set('redirect', pathname);
+      return NextResponse.redirect(url);
+    }
+    const isAdmin =
+      user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() ||
+      user.user_metadata?.role === 'admin' ||
+      user.app_metadata?.role === 'admin';
+    if (!isAdmin) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/homepage';
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

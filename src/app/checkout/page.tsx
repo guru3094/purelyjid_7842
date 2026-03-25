@@ -74,7 +74,7 @@ export default function CheckoutPage() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push('/login?redirect=/checkout');
+      setIsLoading(false);
     }
   }, [user, authLoading, router]);
 
