@@ -22,6 +22,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Skip Supabase auth on admin-panel routes — admin uses local credential auth
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin-panel')) {
+      setLoading(false);
+      return;
+    }
+
     const {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((event, session) => {
