@@ -284,9 +284,36 @@ export default function CheckoutPage() {
         handler: (response: RazorpayResponse) => {
           clearCart();
           showToast('Payment successful! Redirecting…', 'success');
-          router.push(
-            `/order-confirmation?payment_id=${response.razorpay_payment_id}&order_id=${response.razorpay_order_id}`
-          );
+
+          // Build order confirmation URL with real order data
+          const itemsEncoded = encodeURIComponent(JSON.stringify(
+            cartItems.map((item) => ({
+              name: item.name,
+              variant: item.variant || '',
+              quantity: item.quantity,
+              price: item.price,
+            }))
+          ));
+          const addrName = `${formData.firstName} ${formData.lastName}`.trim();
+          const params = new URLSearchParams({
+            payment_id: response.razorpay_payment_id,
+            order_id: response.razorpay_order_id,
+            items: itemsEncoded,
+            subtotal: String(subtotal),
+            shipping_charge: String(shipping),
+            total: String(total),
+            addr_name: addrName,
+            addr_line: formData.address,
+            addr_city: formData.city,
+            addr_state: formData.state,
+            addr_pincode: formData.pincode,
+            addr_phone: formData.phone,
+            addr_email: formData.email,
+          });
+          if (shippingInfo.deliveryDays) {
+            params.set('delivery_days', String(shippingInfo.deliveryDays));
+          }
+          router.push(`/order-confirmation?${params.toString()}`);
         },
         prefill: {
           name: `${formData.firstName} ${formData.lastName}`,

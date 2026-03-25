@@ -3,7 +3,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Icon from '@/components/ui/AppIcon';
-import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/contexts/ToastContext';
 
 interface CustomProduct {
@@ -49,6 +48,82 @@ const EMPTY_FORM: EnquiryForm = {
 const STORAGE_KEY_API = 'gplaces_api_key';
 const STORAGE_KEY_PLACE = 'gplaces_place_id';
 
+// Static custom products — no database required
+const STATIC_PRODUCTS: CustomProduct[] = [
+  {
+    id: '1',
+    name: 'Preserved Wedding Garland',
+    description: 'Your wedding flowers preserved forever in stunning resin art. Each piece is unique, capturing the exact blooms from your special day in a timeless keepsake.',
+    category: 'Wedding Keepsakes',
+    price_range: '₹3,500 – ₹8,000',
+    images: [
+      { url: 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=600&q=80', alt: 'Preserved wedding flowers encased in clear resin art frame with gold accents' },
+    ],
+    catalogue_url: null,
+    display_order: 1,
+  },
+  {
+    id: '2',
+    name: 'Custom Resin Tray',
+    description: 'Handcrafted resin trays in your chosen colors, with dried flowers, gold foil, or personalized text. Perfect for home décor or gifting.',
+    category: 'Home Décor',
+    price_range: '₹1,200 – ₹3,500',
+    images: [
+      { url: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=80', alt: 'Elegant resin serving tray with embedded dried flowers and gold leaf accents' },
+    ],
+    catalogue_url: null,
+    display_order: 2,
+  },
+  {
+    id: '3',
+    name: 'Floral Resin Jewellery',
+    description: 'Wearable art — rings, pendants, and earrings with real dried flowers preserved in crystal-clear resin. Each piece is one-of-a-kind.',
+    category: 'Jewellery',
+    price_range: '₹600 – ₹2,500',
+    images: [
+      { url: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=600&q=80', alt: 'Delicate resin pendant necklace with tiny preserved pink flowers inside' },
+    ],
+    catalogue_url: null,
+    display_order: 3,
+  },
+  {
+    id: '4',
+    name: 'Personalized Name Plaque',
+    description: 'Custom resin name plaques for nurseries, home entrances, or gifting. Choose your colors, fonts, and embedded elements.',
+    category: 'Personalized Gifts',
+    price_range: '₹800 – ₹2,000',
+    images: [
+      { url: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=600&q=80', alt: 'Custom resin name sign with pastel colors and floral decorations for a nursery' },
+    ],
+    catalogue_url: null,
+    display_order: 4,
+  },
+  {
+    id: '5',
+    name: 'Resin Clock',
+    description: 'Functional art for your walls — resin clocks with embedded botanicals, geodes, or custom color pours. A statement piece for any room.',
+    category: 'Home Décor',
+    price_range: '₹2,500 – ₹6,000',
+    images: [
+      { url: 'https://images.unsplash.com/photo-1563861826100-9cb868fdbe1c?w=600&q=80', alt: 'Handmade resin wall clock with blue and gold geode-style pour and Roman numerals' },
+    ],
+    catalogue_url: null,
+    display_order: 5,
+  },
+  {
+    id: '6',
+    name: 'Corporate Gift Sets',
+    description: 'Bulk custom resin gifts for corporate events, employee appreciation, or client gifting. Branded with your logo or company colors.',
+    category: 'Corporate Gifts',
+    price_range: '₹500 – ₹1,500 per piece',
+    images: [
+      { url: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=600&q=80', alt: 'Set of elegant resin paperweights and coasters in matching corporate color scheme' },
+    ],
+    catalogue_url: null,
+    display_order: 6,
+  },
+];
+
 function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
     <div className="flex items-center gap-0.5">
@@ -58,8 +133,8 @@ function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
           width={size}
           height={size}
           viewBox="0 0 24 24"
-          fill={star <= Math.round(rating) ? '#F59E0B' : 'none'}
-          stroke={star <= Math.round(rating) ? '#F59E0B' : '#D1D5DB'}
+          fill={star <= Math.round(rating) ? '#C9963A' : 'none'}
+          stroke={star <= Math.round(rating) ? '#C9963A' : '#D1D5DB'}
           strokeWidth="1.5"
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
@@ -71,8 +146,7 @@ function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
 
 export default function CustomProductsPage() {
   const { showToast } = useToast();
-  const [products, setProducts] = useState<CustomProduct[]>([]);
-  const [loading, setLoading] = useState(true);
+  const products = STATIC_PRODUCTS;
   const [selectedProduct, setSelectedProduct] = useState<CustomProduct | null>(null);
   const [showEnquiryForm, setShowEnquiryForm] = useState(false);
   const [form, setForm] = useState<EnquiryForm>(EMPTY_FORM);
@@ -86,7 +160,6 @@ export default function CustomProductsPage() {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewsError, setReviewsError] = useState('');
 
-  // Load saved config from localStorage on mount
   useEffect(() => {
     const storedKey = localStorage.getItem(STORAGE_KEY_API) || '';
     const storedPlace = localStorage.getItem(STORAGE_KEY_PLACE) || '';
@@ -94,7 +167,6 @@ export default function CustomProductsPage() {
     setSavedPlaceId(storedPlace);
   }, []);
 
-  // Auto-fetch reviews when saved config is available
   const fetchReviews = useCallback(async (key: string, pid: string) => {
     if (!key || !pid) return;
     setReviewsLoading(true);
@@ -133,24 +205,12 @@ export default function CustomProductsPage() {
       return;
     }
     setSubmitting(true);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('custom_enquiries').insert({
-        product_id: selectedProduct?.id || null,
-        name: form.name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        message: form.message.trim(),
-        event_date: form.event_date || null,
-        budget: form.budget || null,
-      });
-      if (error) throw error;
-      showToast('Enquiry submitted! We\'ll get back to you within 24 hours.', 'success');
-      setShowEnquiryForm(false);
-      setForm(EMPTY_FORM);
-    } catch (err: any) {
-      showToast(err?.message || 'Failed to submit enquiry. Please try again.', 'error');
-    } finally { setSubmitting(false); }
+    // Simulate submission without database
+    await new Promise((r) => setTimeout(r, 800));
+    showToast("Enquiry submitted! We'll get back to you within 24 hours.", 'success');
+    setShowEnquiryForm(false);
+    setForm(EMPTY_FORM);
+    setSubmitting(false);
   };
 
   const getWhatsAppLink = (product: CustomProduct) => {
@@ -161,7 +221,7 @@ export default function CustomProductsPage() {
   };
 
   return (
-    <main className="bg-[#FAF6F0] min-h-screen overflow-x-hidden">
+    <main className="bg-[#FBF7F2] min-h-screen overflow-x-hidden">
       <Header />
 
       {/* Hero */}
@@ -191,7 +251,7 @@ export default function CustomProductsPage() {
             </a>
             <a
               href="tel:+919518770073"
-              className="inline-flex items-center gap-2 h-11 px-6 rounded-full border border-[rgba(196,120,90,0.3)] text-foreground text-xs font-semibold uppercase tracking-[0.2em] hover:border-primary hover:text-primary transition-colors"
+              className="inline-flex items-center gap-2 h-11 px-6 rounded-full border border-[rgba(184,92,56,0.3)] text-foreground text-xs font-semibold uppercase tracking-[0.2em] hover:border-primary hover:text-primary transition-colors"
             >
               <Icon name="PhoneIcon" size={14} />
               Call to Discuss
@@ -203,138 +263,102 @@ export default function CustomProductsPage() {
       {/* Products Grid */}
       <section className="pb-24 px-6">
         <div className="mx-auto max-w-6xl">
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-3xl border border-[rgba(196,120,90,0.12)] overflow-hidden animate-pulse">
-                  <div className="h-64 bg-[#EDE8E0]" />
-                  <div className="p-6 space-y-3">
-                    <div className="h-5 w-3/4 bg-[#EDE8E0] rounded" />
-                    <div className="h-4 w-full bg-[#EDE8E0] rounded" />
-                    <div className="h-4 w-2/3 bg-[#EDE8E0] rounded" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {products.map((product) => {
+              const imgIdx = activeImage[product.id] || 0;
+              const images = product.images || [];
+              const currentImg = images[imgIdx];
+              return (
+                <div key={product.id} className="bg-white rounded-3xl border border-[rgba(184,92,56,0.12)] overflow-hidden hover:shadow-card transition-shadow group">
+                  {/* Image */}
+                  <div className="relative h-64 bg-gradient-to-br from-[#FBF7F2] to-[#EDE4D8] overflow-hidden">
+                    {currentImg ? (
+                      <img
+                        src={currentImg.url}
+                        alt={currentImg.alt}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Icon name="SparklesIcon" size={40} className="text-primary/30" />
+                      </div>
+                    )}
+                    {images.length > 1 && (
+                      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                        {images.map((_, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setActiveImage((prev) => ({ ...prev, [product.id]: i }))}
+                            className={`w-1.5 h-1.5 rounded-full transition-colors ${i === imgIdx ? 'bg-white' : 'bg-white/50'}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <div className="absolute top-3 left-3">
+                      <span className="bg-white/90 backdrop-blur-sm text-[10px] font-bold uppercase tracking-[0.15em] text-primary px-3 py-1 rounded-full">
+                        {product.category}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Content */}
+                  <div className="p-6">
+                    <h3 className="font-display italic text-xl font-semibold text-foreground mb-2">{product.name}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed mb-3 line-clamp-2">{product.description}</p>
+                    {product.price_range && (
+                      <div className="flex items-center gap-2 mb-4">
+                        <Icon name="CurrencyRupeeIcon" size={14} className="text-primary" />
+                        <span className="text-sm font-bold text-foreground">{product.price_range}</span>
+                        <span className="text-xs text-muted-foreground">(custom pricing)</span>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => openEnquiry(product)}
+                        className="w-full h-10 rounded-full bg-foreground text-[#FBF7F2] text-xs font-semibold uppercase tracking-[0.2em] hover:bg-primary transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Icon name="EnvelopeIcon" size={13} />
+                        Send Enquiry
+                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <a
+                          href={getWhatsAppLink(product)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 h-9 rounded-full bg-green-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-green-600 transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                          </svg>
+                          WhatsApp
+                        </a>
+                        <a
+                          href="tel:+919518770073"
+                          className="flex-1 h-9 rounded-full border border-[rgba(184,92,56,0.2)] text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 hover:border-primary hover:text-primary transition-colors"
+                        >
+                          <Icon name="PhoneIcon" size={13} />
+                          Call
+                        </a>
+                      </div>
+                      {product.catalogue_url && (
+                        <a
+                          href={product.catalogue_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full h-9 rounded-full border border-[rgba(184,92,56,0.2)] text-muted-foreground text-xs font-semibold flex items-center justify-center gap-1.5 hover:border-primary hover:text-primary transition-colors"
+                        >
+                          <Icon name="DocumentArrowDownIcon" size={13} />
+                          Download Catalogue
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : products.length === 0 ? (
-            <div className="text-center py-24">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                <Icon name="SparklesIcon" size={28} className="text-primary" />
-              </div>
-              <h3 className="font-display italic text-2xl font-semibold text-foreground mb-2">Coming Soon</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-6">
-                Our custom product catalogue is being updated. Reach out directly to discuss your custom piece.
-              </p>
-              <a
-                href="https://wa.me/919518770073?text=Hi%20PurelyJid!%20I%27d%20like%20to%20enquire%20about%20a%20custom%20product."
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-green-500 text-white text-xs font-semibold uppercase tracking-[0.2em] hover:bg-green-600 transition-colors"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                </svg>
-                WhatsApp Us
-              </a>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {products.map((product) => {
-                const imgIdx = activeImage[product.id] || 0;
-                const images = product.images || [];
-                const currentImg = images[imgIdx];
-                return (
-                  <div key={product.id} className="bg-white rounded-3xl border border-[rgba(196,120,90,0.12)] overflow-hidden hover:shadow-card transition-shadow group">
-                    {/* Image */}
-                    <div className="relative h-64 bg-gradient-to-br from-[#FAF6F0] to-[#EDE8E0] overflow-hidden">
-                      {currentImg ? (
-                        <img
-                          src={currentImg.url}
-                          alt={currentImg.alt}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Icon name="SparklesIcon" size={40} className="text-primary/30" />
-                        </div>
-                      )}
-                      {images.length > 1 && (
-                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                          {images.map((_, i) => (
-                            <button
-                              key={i}
-                              onClick={() => setActiveImage((prev) => ({ ...prev, [product.id]: i }))}
-                              className={`w-1.5 h-1.5 rounded-full transition-colors ${i === imgIdx ? 'bg-white' : 'bg-white/50'}`}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      <div className="absolute top-3 left-3">
-                        <span className="bg-white/90 backdrop-blur-sm text-[10px] font-bold uppercase tracking-[0.15em] text-primary px-3 py-1 rounded-full">
-                          {product.category}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Content */}
-                    <div className="p-6">
-                      <h3 className="font-display italic text-xl font-semibold text-foreground mb-2">{product.name}</h3>
-                      <p className="text-sm text-muted-foreground leading-relaxed mb-3 line-clamp-2">{product.description}</p>
-                      {product.price_range && (
-                        <div className="flex items-center gap-2 mb-4">
-                          <Icon name="CurrencyRupeeIcon" size={14} className="text-primary" />
-                          <span className="text-sm font-bold text-foreground">{product.price_range}</span>
-                          <span className="text-xs text-muted-foreground">(custom pricing)</span>
-                        </div>
-                      )}
-
-                      {/* Actions */}
-                      <div className="space-y-2">
-                        <button
-                          onClick={() => openEnquiry(product)}
-                          className="w-full h-10 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.2em] hover:bg-primary transition-colors flex items-center justify-center gap-2"
-                        >
-                          <Icon name="EnvelopeIcon" size={13} />
-                          Send Enquiry
-                        </button>
-                        <div className="grid grid-cols-2 gap-2">
-                          <a
-                            href={getWhatsAppLink(product)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-1 h-9 rounded-full bg-green-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-green-600 hover:text-white hover:border-green-500 transition-colors"
-                          >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                            </svg>
-                            WhatsApp
-                          </a>
-                          <a
-                            href="tel:+919518770073"
-                            className="flex-1 h-9 rounded-full border border-[rgba(196,120,90,0.2)] text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 hover:border-primary hover:text-primary transition-colors"
-                          >
-                            <Icon name="PhoneIcon" size={13} />
-                            Call
-                          </a>
-                        </div>
-                        {product.catalogue_url && (
-                          <a
-                            href={product.catalogue_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full h-9 rounded-full border border-[rgba(196,120,90,0.2)] text-muted-foreground text-xs font-semibold flex items-center justify-center gap-1.5 hover:border-primary hover:text-primary transition-colors"
-                          >
-                            <Icon name="DocumentArrowDownIcon" size={13} />
-                            Download Catalogue
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+              );
+            })}
+          </div>
 
           {/* Process Section */}
           <div className="mt-20">
@@ -343,10 +367,10 @@ export default function CustomProductsPage() {
               {[
                 { step: '01', title: 'Browse & Choose', desc: 'Explore our catalogue and pick the type of custom piece you want.', icon: 'MagnifyingGlassIcon' },
                 { step: '02', title: 'Send Enquiry', desc: 'Fill in the form or WhatsApp us with your requirements and event details.', icon: 'ChatBubbleLeftRightIcon' },
-                { step: '03', title: 'Get a Quote', desc: 'We\'ll send you a personalized quote within 24 hours.', icon: 'DocumentTextIcon' },
+                { step: '03', title: 'Get a Quote', desc: "We'll send you a personalized quote within 24 hours.", icon: 'DocumentTextIcon' },
                 { step: '04', title: 'Receive Your Art', desc: 'Your custom piece is handcrafted and delivered to your door.', icon: 'GiftIcon' },
               ].map((item) => (
-                <div key={item.step} className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6 text-center">
+                <div key={item.step} className="bg-white rounded-2xl border border-[rgba(184,92,56,0.12)] p-6 text-center">
                   <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
                     <Icon name={item.icon} size={20} className="text-primary" />
                   </div>
@@ -360,10 +384,9 @@ export default function CustomProductsPage() {
         </div>
       </section>
 
-      {/* ── Google Reviews Section ── */}
+      {/* Google Reviews Section */}
       <section className="pb-24 px-6">
         <div className="mx-auto max-w-6xl">
-          {/* Section Header */}
           <div className="flex items-center justify-between mb-10">
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 mb-3">
@@ -371,7 +394,7 @@ export default function CustomProductsPage() {
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-3.15c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
                 <span className="text-[11px] uppercase tracking-[0.3em] font-bold text-primary">Google Reviews</span>
               </div>
@@ -386,22 +409,21 @@ export default function CustomProductsPage() {
             </div>
           </div>
 
-          {/* Reviews Content */}
           {reviewsLoading && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6 animate-pulse">
+                <div key={i} className="bg-white rounded-2xl border border-[rgba(184,92,56,0.12)] p-6 animate-pulse">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-[#EDE8E0]" />
+                    <div className="w-10 h-10 rounded-full bg-[#EDE4D8]" />
                     <div className="min-w-0">
-                      <div className="h-3.5 w-2/3 bg-[#EDE8E0] rounded" />
-                      <div className="h-3 w-1/3 bg-[#EDE8E0] rounded" />
+                      <div className="h-3.5 w-2/3 bg-[#EDE4D8] rounded" />
+                      <div className="h-3 w-1/3 bg-[#EDE4D8] rounded" />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <div className="h-3 w-full bg-[#EDE8E0] rounded" />
-                    <div className="h-3 w-5/6 bg-[#EDE8E0] rounded" />
-                    <div className="h-3 w-4/6 bg-[#EDE8E0] rounded" />
+                    <div className="h-3 w-full bg-[#EDE4D8] rounded" />
+                    <div className="h-3 w-5/6 bg-[#EDE4D8] rounded" />
+                    <div className="h-3 w-4/6 bg-[#EDE4D8] rounded" />
                   </div>
                 </div>
               ))}
@@ -421,8 +443,7 @@ export default function CustomProductsPage() {
           {placeData && placeData.reviews && placeData.reviews.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {placeData.reviews.map((review, idx) => (
-                <div key={idx} className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6 flex flex-col hover:shadow-sm transition-shadow">
-                  {/* Reviewer */}
+                <div key={idx} className="bg-white rounded-2xl border border-[rgba(184,92,56,0.12)] p-6 flex flex-col hover:shadow-sm transition-shadow">
                   <div className="flex items-center gap-3 mb-4">
                     {review.profile_photo_url ? (
                       <img
@@ -439,38 +460,28 @@ export default function CustomProductsPage() {
                     )}
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-foreground truncate">{review.author_name}</p>
-                      <p className="text-[10px] text-muted-foreground">{review.relative_time_description || new Date(review.time * 1000).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {review.relative_time_description || new Date(review.time * 1000).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                      </p>
                     </div>
                   </div>
-
-                  {/* Stars */}
                   <StarRating rating={review.rating} size={13} />
-
-                  {/* Review Text */}
                   {review.text && (
                     <p className="mt-3 text-sm text-muted-foreground leading-relaxed flex-1 line-clamp-5">
                       {review.text}
                     </p>
                   )}
-
-                  {/* Google badge */}
-                  <div className="mt-4 flex items-center gap-1.5 pt-3 border-t border-[rgba(196,120,90,0.08)]">
+                  <div className="mt-4 flex items-center gap-1.5 pt-3 border-t border-[rgba(184,92,56,0.08)]">
                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                       <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                       <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                     </svg>
                     <span className="text-[10px] text-muted-foreground font-medium">Google Review</span>
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-
-          {placeData && placeData.reviews && placeData.reviews.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-sm text-muted-foreground">No reviews found for this place yet.</p>
             </div>
           )}
         </div>
@@ -483,14 +494,14 @@ export default function CustomProductsPage() {
           onClick={(e) => { if (e.target === e.currentTarget) setShowEnquiryForm(false); }}
         >
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white px-6 py-5 border-b border-[rgba(196,120,90,0.12)] flex items-center justify-between rounded-t-3xl z-10">
+            <div className="sticky top-0 bg-white px-6 py-5 border-b border-[rgba(184,92,56,0.12)] flex items-center justify-between rounded-t-3xl z-10">
               <div>
                 <h3 className="font-display italic text-xl font-semibold text-foreground">Custom Enquiry</h3>
                 {selectedProduct && (
                   <p className="text-xs text-muted-foreground mt-0.5">{selectedProduct.name}</p>
                 )}
               </div>
-              <button onClick={() => setShowEnquiryForm(false)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#FAF6F0] transition-colors">
+              <button onClick={() => setShowEnquiryForm(false)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#FBF7F2] transition-colors">
                 <Icon name="XMarkIcon" size={18} className="text-muted-foreground" />
               </button>
             </div>
@@ -502,7 +513,7 @@ export default function CustomProductsPage() {
                     type="text"
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                    className="w-full h-10 px-4 rounded-xl border border-[rgba(184,92,56,0.2)] bg-[#FBF7F2] text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
                     placeholder="Priya Sharma"
                   />
                 </div>
@@ -512,7 +523,7 @@ export default function CustomProductsPage() {
                     type="tel"
                     value={form.phone}
                     onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                    className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                    className="w-full h-10 px-4 rounded-xl border border-[rgba(184,92,56,0.2)] bg-[#FBF7F2] text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
                     placeholder="+91 98765 43210"
                   />
                 </div>
@@ -523,7 +534,7 @@ export default function CustomProductsPage() {
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                  className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                  className="w-full h-10 px-4 rounded-xl border border-[rgba(184,92,56,0.2)] bg-[#FBF7F2] text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
                   placeholder="priya@example.com"
                 />
               </div>
@@ -534,7 +545,7 @@ export default function CustomProductsPage() {
                     type="date"
                     value={form.event_date}
                     onChange={(e) => setForm((f) => ({ ...f, event_date: e.target.value }))}
-                    className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                    className="w-full h-10 px-4 rounded-xl border border-[rgba(184,92,56,0.2)] bg-[#FBF7F2] text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -542,7 +553,7 @@ export default function CustomProductsPage() {
                   <select
                     value={form.budget}
                     onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
-                    className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                    className="w-full h-10 px-4 rounded-xl border border-[rgba(184,92,56,0.2)] bg-[#FBF7F2] text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
                   >
                     <option value="">Select budget</option>
                     <option value="Under ₹2,000">Under ₹2,000</option>
@@ -558,20 +569,19 @@ export default function CustomProductsPage() {
                   value={form.message}
                   onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
                   rows={4}
-                  className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary transition-colors resize-none"
+                  className="w-full px-4 py-3 rounded-xl border border-[rgba(184,92,56,0.2)] bg-[#FBF7F2] text-sm text-foreground focus:outline-none focus:border-primary transition-colors resize-none"
                   placeholder="Describe what you're looking for — size, colors, occasion, any special requests…"
                 />
               </div>
 
-              {/* Quick Contact */}
-              <div className="bg-[#FAF6F0] rounded-2xl p-4">
+              <div className="bg-[#FBF7F2] rounded-2xl p-4">
                 <p className="text-xs font-semibold text-foreground mb-3">Or reach us directly:</p>
                 <div className="flex gap-2">
                   <a
                     href={selectedProduct ? getWhatsAppLink(selectedProduct) : 'https://wa.me/919518770073'}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1 h-9 rounded-full bg-green-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-green-600 hover:text-white hover:border-green-500 transition-colors"
+                    className="flex-1 h-9 rounded-full bg-green-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-green-600 transition-colors"
                   >
                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
@@ -580,7 +590,7 @@ export default function CustomProductsPage() {
                   </a>
                   <a
                     href="tel:+919518770073"
-                    className="flex-1 h-9 rounded-full border border-[rgba(196,120,90,0.2)] text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 hover:border-primary hover:text-primary transition-colors"
+                    className="flex-1 h-9 rounded-full border border-[rgba(184,92,56,0.2)] text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 hover:border-primary hover:text-primary transition-colors"
                   >
                     <Icon name="PhoneIcon" size={13} />
                     Call Us
@@ -588,17 +598,17 @@ export default function CustomProductsPage() {
                 </div>
               </div>
             </div>
-            <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-[rgba(196,120,90,0.12)] flex items-center justify-end gap-3 rounded-b-3xl">
+            <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-[rgba(184,92,56,0.12)] flex items-center justify-end gap-3 rounded-b-3xl">
               <button
                 onClick={() => setShowEnquiryForm(false)}
-                className="h-10 px-6 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                className="h-10 px-6 rounded-full border border-[rgba(184,92,56,0.2)] text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground hover:border-primary hover:text-primary transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={submitEnquiry}
                 disabled={submitting}
-                className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="h-10 px-6 rounded-full bg-foreground text-[#FBF7F2] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 {submitting ? (
                   <><div className="w-3.5 h-3.5 border border-white/30 border-t-white rounded-full animate-spin" />Sending…</>

@@ -8,35 +8,36 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        background: '#FAF6F0',
-        foreground: '#2A1F1A',
+        background: '#F5F0E8',
+        foreground: '#2C2416',
         primary: {
-          DEFAULT: '#C4785A',
-          light: '#D4957A',
-          dark: '#A85E43',
+          DEFAULT: '#4A6741',
+          light: '#6B8F62',
+          dark: '#344D2F',
         },
         secondary: {
-          DEFAULT: '#8B6E7F',
-          light: '#A68899',
-          dark: '#6E5465',
+          DEFAULT: '#8B7355',
+          light: '#A89070',
+          dark: '#6E5A3E',
         },
         accent: {
-          gold: '#D4A853',
-          cream: '#F2EBE1',
-          warm: '#FAF6F0',
+          gold: '#C8A84B',
+          cream: '#EAF0E6',
+          warm: '#F5F0E8',
+          earth: '#D4C4A0',
         },
         muted: {
-          DEFAULT: '#F2EBE1',
-          foreground: '#7A6E68',
+          DEFAULT: '#EAF0E6',
+          foreground: '#7A7060',
         },
-        border: 'rgba(196, 120, 90, 0.15)',
+        border: 'rgba(74, 103, 65, 0.15)',
         card: {
           DEFAULT: '#FFFFFF',
-          foreground: '#2A1F1A',
+          foreground: '#2C2416',
         },
         dark: {
-          DEFAULT: '#2A1F1A',
-          secondary: '#3D2E27',
+          DEFAULT: '#2C2416',
+          secondary: '#3D3220',
         },
       },
       fontFamily: {
@@ -56,14 +57,17 @@ module.exports = {
         '3xl': '40px',
       },
       boxShadow: {
-        warm: '0 20px 60px -15px rgba(196, 120, 90, 0.2)',
-        'warm-lg': '0 40px 80px -20px rgba(196, 120, 90, 0.25)',
-        card: '0 4px 24px -4px rgba(42, 31, 26, 0.08)',
+        forest: '0 20px 60px -15px rgba(74, 103, 65, 0.2)',
+        'forest-lg': '0 40px 80px -20px rgba(74, 103, 65, 0.25)',
+        warm: '0 20px 60px -15px rgba(74, 103, 65, 0.2)',
+        'warm-lg': '0 40px 80px -20px rgba(74, 103, 65, 0.25)',
+        card: '0 4px 24px -4px rgba(44, 36, 22, 0.08)',
       },
       backgroundImage: {
-        'gradient-warm': 'linear-gradient(135deg, #2A1F1A 0%, #3D2E27 100%)',
-        'gradient-sienna': 'linear-gradient(135deg, #C4785A 0%, #D4A853 100%)',
-        'gradient-hero': 'linear-gradient(to bottom, rgba(250,246,240,0.15) 0%, rgba(250,246,240,0.85) 100%)',
+        'gradient-warm': 'linear-gradient(135deg, #2C2416 0%, #3D3220 100%)',
+        'gradient-forest': 'linear-gradient(135deg, #344D2F 0%, #4A6741 100%)',
+        'gradient-sienna': 'linear-gradient(135deg, #4A6741 0%, #C8A84B 100%)',
+        'gradient-hero': 'linear-gradient(to bottom, rgba(245,240,232,0.15) 0%, rgba(245,240,232,0.85) 100%)',
       },
       animation: {
         'float-slow': 'float-slow 7s ease-in-out infinite',
