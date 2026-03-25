@@ -43,7 +43,7 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Protect admin routes — only allow the designated admin email
-  if (pathname.startsWith('/admin') || pathname.startsWith('/admin-panel')) {
+  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin-panel')) {
     if (!user) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
