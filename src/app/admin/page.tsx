@@ -220,9 +220,27 @@ interface DeliveryPincode {
   is_active: boolean;
   delivery_days: number;
   extra_charge: number;
+  free_shipping_above?: number;
 }
 
-type Tab = 'overview' | 'analytics' | 'orders' | 'products' | 'inventory' | 'coupons' | 'categories' | 'themes' | 'couriers' | 'story' | 'users' | 'google-reviews' | 'invoices' | 'vyaapar' | 'shop' | 'collections' | 'workshops-admin' | 'custom-products-admin' | 'pincodes' | 'brand-templates' | 'shipping-policy' | 'privacy-policy' | 'terms-conditions';
+interface ShippingZone {
+  id: string;
+  zone_name: string;
+  zone_type: 'city' | 'area' | 'distance' | 'state';
+  city: string;
+  state: string;
+  area_keywords: string;
+  min_distance_km: number;
+  max_distance_km: number;
+  shipping_charge: number;
+  free_shipping_above: number;
+  delivery_days: number;
+  is_active: boolean;
+  priority: number;
+  created_at: string;
+}
+
+type Tab = 'overview' | 'analytics' | 'orders' | 'products' | 'inventory' | 'coupons' | 'categories' | 'themes' | 'couriers' | 'story' | 'users' | 'google-reviews' | 'invoices' | 'vyaapar' | 'shop' | 'collections' | 'workshops-admin' | 'custom-products-admin' | 'pincodes' | 'brand-templates' | 'shipping-policy' | 'privacy-policy' | 'terms-conditions' | 'shipping-charges';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -396,6 +414,16 @@ export default function AdminPage() {
   const [bulkPincodes, setBulkPincodes] = useState('');
   const [importingPincodes, setImportingPincodes] = useState(false);
 
+  // Shipping Zones
+  const [shippingZones, setShippingZones] = useState<ShippingZone[]>([]);
+  const [showZoneModal, setShowZoneModal] = useState(false);
+  const [editingZone, setEditingZone] = useState<ShippingZone | null>(null);
+  const [zoneForm, setZoneForm] = useState({ zone_name: '', zone_type: 'city' as ShippingZone['zone_type'], city: '', state: '', area_keywords: '', min_distance_km: 0, max_distance_km: 9999, shipping_charge: 0, free_shipping_above: 0, delivery_days: 5, is_active: true, priority: 0 });
+  const [savingZone, setSavingZone] = useState(false);
+  const [deletingZone, setDeletingZone] = useState<string | null>(null);
+  const [zoneSearch, setZoneSearch] = useState('');
+  const [shippingTab, setShippingTab] = useState<'pincodes' | 'zones'>('pincodes');
+
   // Product modal
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -482,7 +510,7 @@ export default function AdminPage() {
     setFetchError('');
     try {
       const supabase = createClient();
-      const [ordersRes, usersRes, productsRes, categoriesRes, themesRes, couponsRes, couriersRes, storyRes, workshopRes, customRes, enquiriesRes, pincodesRes] = await Promise.all([
+      const [ordersRes, usersRes, productsRes, categoriesRes, themesRes, couponsRes, couriersRes, storyRes, workshopRes, customRes, enquiriesRes, pincodesRes, zonesRes] = await Promise.all([
         supabase.from('orders').select('*, user_profiles(full_name, email)').order('created_at', { ascending: false }),
         supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
         supabase.from('products').select('*, categories(name)').order('display_order', { ascending: true }),
@@ -495,6 +523,7 @@ export default function AdminPage() {
         supabase.from('custom_products').select('*').order('display_order', { ascending: true }),
         supabase.from('custom_enquiries').select('*').order('created_at', { ascending: false }),
         supabase.from('delivery_pincodes').select('*').order('pincode', { ascending: true }),
+        supabase.from('shipping_zones').select('*').order('priority', { ascending: false }),
       ]);
       if (ordersRes.data) setOrders(ordersRes.data);
       if (usersRes.data) setUsers(usersRes.data);
@@ -508,6 +537,7 @@ export default function AdminPage() {
       if (customRes.data) setCustomProducts(customRes.data);
       if (enquiriesRes.data) setCustomEnquiries(enquiriesRes.data);
       if (pincodesRes.data) setPincodes(pincodesRes.data);
+      if (zonesRes.data) setShippingZones(zonesRes.data);
 
       // Fetch policy pages content
       const [shippingRes, privacyRes, termsRes] = await Promise.all([
@@ -1253,6 +1283,71 @@ export default function AdminPage() {
     } finally { setImportingPincodes(false); }
   };
 
+  // ── Shipping Zone Actions ────────────────────────────────────────────────────
+
+  const openAddZone = () => {
+    setEditingZone(null);
+    setZoneForm({ zone_name: '', zone_type: 'city', city: '', state: '', area_keywords: '', min_distance_km: 0, max_distance_km: 9999, shipping_charge: 0, free_shipping_above: 0, delivery_days: 5, is_active: true, priority: 0 });
+    setShowZoneModal(true);
+  };
+
+  const openEditZone = (z: ShippingZone) => {
+    setEditingZone(z);
+    setZoneForm({ zone_name: z.zone_name, zone_type: z.zone_type, city: z.city, state: z.state, area_keywords: z.area_keywords, min_distance_km: z.min_distance_km, max_distance_km: z.max_distance_km, shipping_charge: z.shipping_charge, free_shipping_above: z.free_shipping_above, delivery_days: z.delivery_days, is_active: z.is_active, priority: z.priority });
+    setShowZoneModal(true);
+  };
+
+  const saveZone = async () => {
+    if (!zoneForm.zone_name.trim()) { showToast('Zone name is required.', 'error'); return; }
+    setSavingZone(true);
+    try {
+      const supabase = createClient();
+      const payload = { ...zoneForm, shipping_charge: Number(zoneForm.shipping_charge), free_shipping_above: Number(zoneForm.free_shipping_above), delivery_days: Number(zoneForm.delivery_days), priority: Number(zoneForm.priority), min_distance_km: Number(zoneForm.min_distance_km), max_distance_km: Number(zoneForm.max_distance_km) };
+      if (editingZone) {
+        const { error } = await supabase.from('shipping_zones').update(payload).eq('id', editingZone.id);
+        if (error) throw error;
+        showToast('Shipping zone updated.', 'success');
+      } else {
+        const { error } = await supabase.from('shipping_zones').insert(payload);
+        if (error) throw error;
+        showToast('Shipping zone added.', 'success');
+      }
+      setShowZoneModal(false);
+      fetchData();
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to save zone.', 'error');
+    } finally {
+      setSavingZone(false);
+    }
+  };
+
+  const deleteZone = async (id: string) => {
+    setDeletingZone(id);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('shipping_zones').delete().eq('id', id);
+      if (error) throw error;
+      setShippingZones((prev) => prev.filter((z) => z.id !== id));
+      showToast('Zone removed.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to delete zone.', 'error');
+    } finally {
+      setDeletingZone(null);
+    }
+  };
+
+  const toggleZoneActive = async (z: ShippingZone) => {
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('shipping_zones').update({ is_active: !z.is_active }).eq('id', z.id);
+      if (error) throw error;
+      setShippingZones((prev) => prev.map((zone) => zone.id === z.id ? { ...zone, is_active: !zone.is_active } : zone));
+      showToast(`Zone ${!z.is_active ? 'activated' : 'deactivated'}.`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to update zone.', 'error');
+    }
+  };
+
   // ── Product Actions (stub) ───────────────────────────────────────────────
 
   const openAddProduct = () => {
@@ -1316,6 +1411,7 @@ export default function AdminPage() {
     { id: 'shipping-policy', label: 'Shipping Policy', icon: 'TruckIcon' },
     { id: 'privacy-policy', label: 'Privacy Policy', icon: 'ShieldCheckIcon' },
     { id: 'terms-conditions', label: 'Terms & Conditions', icon: 'DocumentTextIcon' },
+    { id: 'shipping-charges', label: 'Shipping Charges', icon: 'TruckIcon' },
   ];
 
   const inventoryProducts = products.filter((p) =>
@@ -3533,6 +3629,311 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── Shipping Charges Tab ── */}
+          {activeTab === 'shipping-charges' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Shipping Charges</h2>
+              </div>
+
+              {/* Sub-tabs */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShippingTab('pincodes')}
+                  className={`h-9 px-5 rounded-full text-xs font-semibold uppercase tracking-[0.15em] transition-colors ${shippingTab === 'pincodes' ? 'bg-foreground text-[#FAF6F0]' : 'border border-[rgba(196,120,90,0.2)] text-muted-foreground hover:border-primary hover:text-primary'}`}
+                >
+                  By Pincode ({pincodes.length})
+                </button>
+                <button
+                  onClick={() => setShippingTab('zones')}
+                  className={`h-9 px-5 rounded-full text-xs font-semibold uppercase tracking-[0.15em] transition-colors ${shippingTab === 'zones' ? 'bg-foreground text-[#FAF6F0]' : 'border border-[rgba(196,120,90,0.2)] text-muted-foreground hover:border-primary hover:text-primary'}`}
+                >
+                  By Zone / Area / City ({shippingZones.length})
+                </button>
+              </div>
+
+              {/* How it works info */}
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-xs text-blue-700">
+                <p className="font-semibold mb-1">How shipping charge lookup works at checkout:</p>
+                <ol className="list-decimal list-inside space-y-0.5">
+                  <li>First checks <strong>Pincode-specific</strong> rules (exact match)</li>
+                  <li>Then checks <strong>Zone rules</strong> (by city/area/state) in priority order</li>
+                  <li>Falls back to <strong>default</strong>: free above ₹1,250, else ₹9.99</li>
+                </ol>
+              </div>
+
+              {/* ── Pincode Sub-tab ── */}
+              {shippingTab === 'pincodes' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Set specific shipping charges for individual pincodes.</p>
+                    <button onClick={openAddPincode} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2 text-xs">
+                      <Icon name="PlusIcon" size={14} />
+                      Add Pincode
+                    </button>
+                  </div>
+
+                  {/* Bulk Import */}
+                  <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                    <h3 className="font-semibold text-foreground mb-2 text-sm">Bulk Import Pincodes</h3>
+                    <p className="mb-2 text-xs text-muted-foreground">Paste one 6-digit pincode per line to add multiple at once (with default settings).</p>
+                    <textarea
+                      className="w-full h-24 px-4 py-2 border border-dashed border-[rgba(196,120,90,0.3)] rounded-xl resize-none mb-2 text-sm"
+                      placeholder={"110001\n400001\n560001"}
+                      value={bulkPincodes}
+                      onChange={(e) => setBulkPincodes(e.target.value)}
+                    />
+                    <button
+                      onClick={importBulkPincodes}
+                      disabled={importingPincodes || !bulkPincodes.trim()}
+                      className="px-4 py-2 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.1em] hover:bg-primary transition disabled:opacity-50"
+                    >
+                      {importingPincodes ? 'Importing…' : 'Import Pincodes'}
+                    </button>
+                  </div>
+
+                  {/* Search + List */}
+                  <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                    <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
+                      <input
+                        type="text"
+                        className="w-full h-9 px-4 rounded-full border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                        placeholder="Search pincode or area…"
+                        value={pincodeSearch}
+                        onChange={(e) => setPincodeSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                      {pincodes.filter((p) => !pincodeSearch || p.pincode.includes(pincodeSearch) || p.area_name.toLowerCase().includes(pincodeSearch.toLowerCase()) || p.city.toLowerCase().includes(pincodeSearch.toLowerCase())).length === 0 ? (
+                        <div className="px-6 py-12 text-center"><Icon name="MapPinIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm text-muted-foreground">No pincodes found.</p></div>
+                      ) : pincodes.filter((p) => !pincodeSearch || p.pincode.includes(pincodeSearch) || p.area_name.toLowerCase().includes(pincodeSearch.toLowerCase()) || p.city.toLowerCase().includes(pincodeSearch.toLowerCase())).map((pin) => (
+                        <div key={pin.id} className="flex items-center gap-4 px-6 py-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-foreground font-mono">{pin.pincode}</p>
+                            <p className="text-xs text-muted-foreground">{[pin.area_name, pin.city, pin.state].filter(Boolean).join(', ') || 'No area details'}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {pin.delivery_days} day{pin.delivery_days !== 1 ? 's' : ''} delivery
+                              {pin.extra_charge > 0 ? ` · Charge: ₹${(pin.extra_charge / 100).toLocaleString('en-IN')}` : ' · Free shipping'}
+                              {pin.free_shipping_above && pin.free_shipping_above > 0 ? ` (free above ₹${(pin.free_shipping_above / 100).toLocaleString('en-IN')})` : ''}
+                            </p>
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pin.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{pin.is_active ? 'Active' : 'Off'}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button onClick={() => togglePincodeActive(pin)} className="h-7 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">{pin.is_active ? 'Disable' : 'Enable'}</button>
+                            <button onClick={() => openEditPincode(pin)} className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"><Icon name="PencilIcon" size={11} /></button>
+                            <button onClick={() => deletePincode(pin.id)} disabled={deletingPincode === pin.id} className="w-7 h-7 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"><Icon name="TrashIcon" size={11} /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Zones Sub-tab ── */}
+              {shippingTab === 'zones' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Define shipping charges by city, area, state, or distance range.</p>
+                    <button onClick={openAddZone} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2 text-xs">
+                      <Icon name="PlusIcon" size={14} />
+                      Add Zone
+                    </button>
+                  </div>
+
+                  {/* Search + List */}
+                  <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                    <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
+                      <input
+                        type="text"
+                        className="w-full h-9 px-4 rounded-full border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                        placeholder="Search zone name, city, area…"
+                        value={zoneSearch}
+                        onChange={(e) => setZoneSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                      {shippingZones.filter((z) => !zoneSearch || z.zone_name.toLowerCase().includes(zoneSearch.toLowerCase()) || z.city.toLowerCase().includes(zoneSearch.toLowerCase()) || z.area_keywords.toLowerCase().includes(zoneSearch.toLowerCase())).length === 0 ? (
+                        <div className="px-6 py-12 text-center"><Icon name="MapIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm text-muted-foreground">No zones defined yet.</p></div>
+                      ) : shippingZones.filter((z) => !zoneSearch || z.zone_name.toLowerCase().includes(zoneSearch.toLowerCase()) || z.city.toLowerCase().includes(zoneSearch.toLowerCase()) || z.area_keywords.toLowerCase().includes(zoneSearch.toLowerCase())).map((zone) => (
+                        <div key={zone.id} className="flex items-center gap-4 px-6 py-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-bold text-foreground">{zone.zone_name}</p>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 capitalize">{zone.zone_type}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {zone.zone_type === 'city' && zone.city && `City: ${zone.city}`}
+                              {zone.zone_type === 'state' && zone.state && `State: ${zone.state}`}
+                              {zone.zone_type === 'area' && zone.area_keywords && `Areas: ${zone.area_keywords}`}
+                              {zone.zone_type === 'distance' && `Distance: ${zone.min_distance_km}–${zone.max_distance_km} km`}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Charge: {zone.shipping_charge === 0 ? 'Free' : `₹${(zone.shipping_charge / 100).toLocaleString('en-IN')}`}
+                              {zone.free_shipping_above > 0 ? ` (free above ₹${(zone.free_shipping_above / 100).toLocaleString('en-IN')})` : ''}
+                              {' · '}{zone.delivery_days} day{zone.delivery_days !== 1 ? 's' : ''}
+                              {' · '}Priority: {zone.priority}
+                            </p>
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${zone.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{zone.is_active ? 'Active' : 'Off'}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button onClick={() => toggleZoneActive(zone)} className="h-7 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">{zone.is_active ? 'Disable' : 'Enable'}</button>
+                            <button onClick={() => openEditZone(zone)} className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"><Icon name="PencilIcon" size={11} /></button>
+                            <button onClick={() => deleteZone(zone.id)} disabled={deletingZone === zone.id} className="w-7 h-7 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"><Icon name="TrashIcon" size={11} /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Pincode Modal ── */}
+              {showPincodeModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+                    <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
+                      <h3 className="font-display italic text-lg font-semibold text-foreground">{editingPincode ? 'Edit Pincode' : 'Add Pincode'}</h3>
+                      <button onClick={() => setShowPincodeModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Pincode *</label>
+                        <input type="text" maxLength={6} value={pincodeForm.pincode} onChange={(e) => setPincodeForm((p) => ({ ...p, pincode: e.target.value.replace(/\D/g, '') }))} placeholder="6-digit pincode" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm font-mono focus:outline-none focus:border-primary" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Area Name</label>
+                          <input type="text" value={pincodeForm.area_name} onChange={(e) => setPincodeForm((p) => ({ ...p, area_name: e.target.value }))} placeholder="e.g. Bandra West" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">City</label>
+                          <input type="text" value={pincodeForm.city} onChange={(e) => setPincodeForm((p) => ({ ...p, city: e.target.value }))} placeholder="e.g. Mumbai" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">State</label>
+                        <input type="text" value={pincodeForm.state} onChange={(e) => setPincodeForm((p) => ({ ...p, state: e.target.value }))} placeholder="e.g. Maharashtra" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Shipping Charge (₹)</label>
+                          <input type="number" min={0} value={pincodeForm.extra_charge / 100} onChange={(e) => setPincodeForm((p) => ({ ...p, extra_charge: Math.round(parseFloat(e.target.value || '0') * 100) }))} placeholder="0 = Free" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Delivery Days</label>
+                          <input type="number" min={1} value={pincodeForm.delivery_days} onChange={(e) => setPincodeForm((p) => ({ ...p, delivery_days: parseInt(e.target.value || '3') }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Free Shipping Above (₹) — 0 = never free</label>
+                        <input type="number" min={0} value={(pincodeForm as any).free_shipping_above ? (pincodeForm as any).free_shipping_above / 100 : 0} onChange={(e) => setPincodeForm((p) => ({ ...p, free_shipping_above: Math.round(parseFloat(e.target.value || '0') * 100) } as any))} placeholder="e.g. 1250" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={pincodeForm.is_active} onChange={(e) => setPincodeForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Active</span>
+                      </label>
+                    </div>
+                    <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
+                      <button onClick={() => setShowPincodeModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
+                      <button disabled={savingPincode} onClick={savePincode} className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
+                        {savingPincode ? 'Saving…' : editingPincode ? 'Update' : 'Add Pincode'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Zone Modal ── */}
+              {showZoneModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                    <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
+                      <h3 className="font-display italic text-lg font-semibold text-foreground">{editingZone ? 'Edit Shipping Zone' : 'Add Shipping Zone'}</h3>
+                      <button onClick={() => setShowZoneModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Zone Name *</label>
+                        <input type="text" value={zoneForm.zone_name} onChange={(e) => setZoneForm((p) => ({ ...p, zone_name: e.target.value }))} placeholder="e.g. Mumbai Local, South India, etc." className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Zone Type</label>
+                        <select value={zoneForm.zone_type} onChange={(e) => setZoneForm((p) => ({ ...p, zone_type: e.target.value as ShippingZone['zone_type'] }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary">
+                          <option value="city">City</option>
+                          <option value="area">Area (keyword match)</option>
+                          <option value="state">State</option>
+                          <option value="distance">Distance Range</option>
+                        </select>
+                      </div>
+                      {(zoneForm.zone_type === 'city' || zoneForm.zone_type === 'area') && (
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">City</label>
+                          <input type="text" value={zoneForm.city} onChange={(e) => setZoneForm((p) => ({ ...p, city: e.target.value }))} placeholder="e.g. Mumbai" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      )}
+                      {(zoneForm.zone_type === 'state' || zoneForm.zone_type === 'area') && (
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">State</label>
+                          <input type="text" value={zoneForm.state} onChange={(e) => setZoneForm((p) => ({ ...p, state: e.target.value }))} placeholder="e.g. Maharashtra" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      )}
+                      {zoneForm.zone_type === 'area' && (
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Area Keywords (comma-separated)</label>
+                          <input type="text" value={zoneForm.area_keywords} onChange={(e) => setZoneForm((p) => ({ ...p, area_keywords: e.target.value }))} placeholder="e.g. Bandra, Andheri, Juhu" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                          <p className="mt-1 text-[10px] text-muted-foreground">Checkout will match if the customer&apos;s area contains any of these keywords.</p>
+                        </div>
+                      )}
+                      {zoneForm.zone_type === 'distance' && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Min Distance (km)</label>
+                            <input type="number" min={0} value={zoneForm.min_distance_km} onChange={(e) => setZoneForm((p) => ({ ...p, min_distance_km: parseFloat(e.target.value || '0') }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Max Distance (km)</label>
+                            <input type="number" min={0} value={zoneForm.max_distance_km} onChange={(e) => setZoneForm((p) => ({ ...p, max_distance_km: parseFloat(e.target.value || '9999') }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                          </div>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Shipping Charge (₹)</label>
+                          <input type="number" min={0} value={zoneForm.shipping_charge / 100} onChange={(e) => setZoneForm((p) => ({ ...p, shipping_charge: Math.round(parseFloat(e.target.value || '0') * 100) }))} placeholder="0 = Free" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Delivery Days</label>
+                          <input type="number" min={1} value={zoneForm.delivery_days} onChange={(e) => setZoneForm((p) => ({ ...p, delivery_days: parseInt(e.target.value || '5') }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Free Shipping Above (₹) — 0 = never</label>
+                          <input type="number" min={0} value={zoneForm.free_shipping_above / 100} onChange={(e) => setZoneForm((p) => ({ ...p, free_shipping_above: Math.round(parseFloat(e.target.value || '0') * 100) }))} placeholder="e.g. 1250" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Priority (higher = checked first)</label>
+                          <input type="number" min={0} value={zoneForm.priority} onChange={(e) => setZoneForm((p) => ({ ...p, priority: parseInt(e.target.value || '0') }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={zoneForm.is_active} onChange={(e) => setZoneForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Active</span>
+                      </label>
+                    </div>
+                    <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
+                      <button onClick={() => setShowZoneModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
+                      <button disabled={savingZone} onClick={saveZone} className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
+                        {savingZone ? 'Saving…' : editingZone ? 'Update' : 'Add Zone'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

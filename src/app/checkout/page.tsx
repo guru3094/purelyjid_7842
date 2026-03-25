@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
@@ -9,6 +9,7 @@ import AppImage from '@/components/ui/AppImage';
 import { useToast } from '@/contexts/ToastContext';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { createClient } from '@/lib/supabase/client';
 
 interface FormData {
   firstName: string;
@@ -51,6 +52,88 @@ interface RazorpayResponse {
   razorpay_signature: string;
 }
 
+interface ShippingInfo {
+  charge: number;
+  deliveryDays: number | null;
+  source: 'pincode' | 'zone' | 'default';
+  zoneName?: string;
+}
+
+const DEFAULT_FREE_ABOVE = 125000; // ₹1,250 in paise
+const DEFAULT_SHIPPING = 999; // ₹9.99 in paise
+
+async function lookupShipping(pincode: string, city: string, area: string, subtotal: number): Promise<ShippingInfo> {
+  if (!pincode || pincode.length !== 6) {
+    return { charge: subtotal >= DEFAULT_FREE_ABOVE ? 0 : DEFAULT_SHIPPING, deliveryDays: null, source: 'default' };
+  }
+  try {
+    const supabase = createClient();
+
+    // 1. Check pincode-specific rule first
+    const { data: pincodeData } = await supabase
+      .from('delivery_pincodes')
+      .select('extra_charge, free_shipping_above, delivery_days, is_active')
+      .eq('pincode', pincode)
+      .eq('is_active', true)
+      .single();
+
+    if (pincodeData) {
+      const freeAbove = pincodeData.free_shipping_above || 0;
+      const isFree = freeAbove > 0 ? subtotal >= freeAbove : pincodeData.extra_charge === 0;
+      return {
+        charge: isFree ? 0 : pincodeData.extra_charge,
+        deliveryDays: pincodeData.delivery_days,
+        source: 'pincode',
+      };
+    }
+
+    // 2. Check zone rules (ordered by priority desc)
+    const { data: zones } = await supabase
+      .from('shipping_zones')
+      .select('*')
+      .eq('is_active', true)
+      .order('priority', { ascending: false });
+
+    if (zones && zones.length > 0) {
+      const cityLower = city.toLowerCase();
+      const areaLower = area.toLowerCase();
+
+      for (const zone of zones) {
+        let matches = false;
+        if (zone.zone_type === 'city' && zone.city) {
+          matches = cityLower.includes(zone.city.toLowerCase()) || zone.city.toLowerCase().includes(cityLower);
+        } else if (zone.zone_type === 'state' && zone.state) {
+          // state matching handled by city field fallback
+          matches = false; // state not in form yet, skip
+        } else if (zone.zone_type === 'area' && zone.area_keywords) {
+          const keywords = zone.area_keywords.split(',').map((k: string) => k.trim().toLowerCase()).filter(Boolean);
+          matches = keywords.some((kw: string) => areaLower.includes(kw) || cityLower.includes(kw));
+        }
+
+        if (matches) {
+          const freeAbove = zone.free_shipping_above || 0;
+          const isFree = freeAbove > 0 ? subtotal >= freeAbove : zone.shipping_charge === 0;
+          return {
+            charge: isFree ? 0 : zone.shipping_charge,
+            deliveryDays: zone.delivery_days,
+            source: 'zone',
+            zoneName: zone.zone_name,
+          };
+        }
+      }
+    }
+  } catch {
+    // silently fall through to default
+  }
+
+  // 3. Default fallback
+  return {
+    charge: subtotal >= DEFAULT_FREE_ABOVE ? 0 : DEFAULT_SHIPPING,
+    deliveryDays: null,
+    source: 'default',
+  };
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -70,6 +153,12 @@ export default function CheckoutPage() {
     pincode: '',
   });
   const [errors, setErrors] = useState<Partial<FormData>>({});
+  const [shippingInfo, setShippingInfo] = useState<ShippingInfo>({
+    charge: subtotal >= DEFAULT_FREE_ABOVE ? 0 : DEFAULT_SHIPPING,
+    deliveryDays: null,
+    source: 'default',
+  });
+  const [lookingUpShipping, setLookingUpShipping] = useState(false);
 
   // Brief loading for hydration
   useEffect(() => {
@@ -84,7 +173,23 @@ export default function CheckoutPage() {
     }
   }, [user]);
 
-  const shipping = subtotal >= 125000 ? 0 : 999;
+  // Auto-lookup shipping when pincode is complete
+  const doShippingLookup = useCallback(async (pincode: string, city: string, address: string) => {
+    setLookingUpShipping(true);
+    const info = await lookupShipping(pincode, city, address, subtotal);
+    setShippingInfo(info);
+    setLookingUpShipping(false);
+  }, [subtotal]);
+
+  useEffect(() => {
+    if (formData.pincode.length === 6) {
+      doShippingLookup(formData.pincode, formData.city, formData.address);
+    } else {
+      setShippingInfo({ charge: subtotal >= DEFAULT_FREE_ABOVE ? 0 : DEFAULT_SHIPPING, deliveryDays: null, source: 'default' });
+    }
+  }, [formData.pincode, formData.city, formData.address, subtotal]);
+
+  const shipping = shippingInfo.charge;
   const total = subtotal + shipping;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -365,8 +470,22 @@ export default function CheckoutPage() {
                         <label className="block text-[11px] uppercase tracking-[0.25em] font-semibold text-foreground mb-2">
                           Pincode <span className="text-red-400">*</span>
                         </label>
-                        <input type="text" name="pincode" value={formData.pincode} onChange={handleChange} placeholder="6-digit pincode" className={inputClass('pincode')} autoComplete="postal-code" maxLength={6} />
+                        <div className="relative">
+                          <input type="text" name="pincode" value={formData.pincode} onChange={handleChange} placeholder="6-digit pincode" className={inputClass('pincode')} autoComplete="postal-code" maxLength={6} />
+                          {lookingUpShipping && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                              <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                            </div>
+                          )}
+                        </div>
                         {errors.pincode && <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1"><Icon name="ExclamationCircleIcon" size={12} />{errors.pincode}</p>}
+                        {!errors.pincode && formData.pincode.length === 6 && !lookingUpShipping && (
+                          <p className="mt-1.5 text-xs text-primary flex items-center gap-1">
+                            <Icon name="CheckCircleIcon" size={12} />
+                            {shippingInfo.source === 'pincode' ? 'Pincode-specific rate applied' : shippingInfo.source === 'zone' ? `Zone rate applied${shippingInfo.zoneName ? ` (${shippingInfo.zoneName})` : ''}` : 'Default shipping rate'}
+                            {shippingInfo.deliveryDays ? ` · ${shippingInfo.deliveryDays} day${shippingInfo.deliveryDays !== 1 ? 's' : ''} delivery` : ''}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div>
@@ -413,14 +532,22 @@ export default function CheckoutPage() {
                       <span className="text-muted-foreground">Subtotal</span>
                       <span className="font-semibold text-foreground">₹{(subtotal / 100).toLocaleString('en-IN')}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Shipping</span>
+                    <div className="flex justify-between text-sm items-center">
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        Shipping
+                        {lookingUpShipping && <span className="w-3 h-3 border border-primary/30 border-t-primary rounded-full animate-spin inline-block" />}
+                      </span>
                       {shipping === 0 ? (
                         <span className="text-xs font-bold text-primary uppercase tracking-wide">Free</span>
                       ) : (
                         <span className="font-semibold text-foreground">₹{(shipping / 100).toLocaleString('en-IN')}</span>
                       )}
                     </div>
+                    {shippingInfo.source !== 'default' && (
+                      <p className="text-[10px] text-muted-foreground text-right">
+                        {shippingInfo.source === 'pincode' ? 'Pincode-specific rate' : `Zone: ${shippingInfo.zoneName || 'Matched zone'}`}
+                      </p>
+                    )}
                     <div className="flex justify-between pt-2.5 border-t border-[rgba(196,120,90,0.1)]">
                       <span className="font-bold text-foreground">Total</span>
                       <span className="font-display italic text-xl font-bold text-foreground">
@@ -431,7 +558,7 @@ export default function CheckoutPage() {
 
                   <button
                     onClick={handlePayment}
-                    disabled={loading}
+                    disabled={loading || lookingUpShipping}
                     className="mt-6 w-full h-13 py-3.5 rounded-full bg-gradient-warm text-[#FAF6F0] text-xs font-bold uppercase tracking-[0.25em] hover:opacity-90 transition-all duration-300 shadow-warm disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {loading ? (
