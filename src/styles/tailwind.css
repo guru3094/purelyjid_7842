@@ -5,17 +5,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --bg-cream: #FBF7F2;
-  --bg-warm: #EDE4D8;
-  --bg-dark: #1E1410;
-  --accent-sienna: #B85C38;
-  --accent-mauve: #7A5C6E;
-  --accent-gold: #C9963A;
-  --accent-rose: #D4826A;
-  --text-espresso: #1E1410;
-  --text-warm-gray: #6E6058;
-  --text-light: #A89890;
-  --border-warm: rgba(184, 92, 56, 0.15);
+  --bg-cream: #F5F0E8;
+  --bg-warm: #EAF0E6;
+  --bg-dark: #2C2416;
+  --accent-sienna: #4A6741;
+  --accent-mauve: #8B7355;
+  --accent-gold: #C8A84B;
+  --text-espresso: #2C2416;
+  --text-warm-gray: #7A7060;
+  --text-light: #B5A89F;
+  --border-warm: rgba(74, 103, 65, 0.15);
 }
 
 html {
