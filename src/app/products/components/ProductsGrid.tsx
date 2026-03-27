@@ -148,9 +148,14 @@ export default function ProductsGrid() {
           .eq('is_active', true)
           .order('display_order', { ascending: true });
 
-        if (error || !data || data.length === 0) {
+        if (error) {
+          // Only fall back to static on actual network/auth error
           setAllProducts(STATIC_PRODUCTS);
           setCategories(['All', 'Jewelry', 'Home Décor', 'DIY Supplies', 'Stationery', 'Accessories']);
+        } else if (!data || data.length === 0) {
+          // DB reachable but no active products — show empty state (not static)
+          setAllProducts([]);
+          setCategories(['All']);
         } else {
           const mapped: Product[] = data.map((p: any) => ({
             id: p.id,

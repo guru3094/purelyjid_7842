@@ -1836,10 +1836,11 @@ export default function AdminPage() {
                             setDeletingProduct(product.id);
                             try {
                               const supabase = createClient();
-                              await supabase.from('products').delete().eq('id', product.id);
+                              const { error } = await supabase.from('products').delete().eq('id', product.id);
+                              if (error) throw new Error(error.message);
                               setProducts((prev) => prev.filter((p) => p.id !== product.id));
                               showToast('Product deleted.', 'success');
-                            } catch { showToast('Failed to delete product.', 'error'); }
+                            } catch (err: any) { showToast(err?.message || 'Failed to delete product.', 'error'); }
                             finally { setDeletingProduct(null); }
                           }}
                           disabled={deletingProduct === product.id}
@@ -2045,10 +2046,12 @@ export default function AdminPage() {
                             const slug = (productForm as any).slug || (productForm as any).name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
                             const payload = { ...(productForm as any), slug, updated_at: new Date().toISOString() };
                             if (editingProduct) {
-                              await supabase.from('products').update(payload).eq('id', editingProduct.id);
+                              const { error } = await supabase.from('products').update(payload).eq('id', editingProduct.id);
+                              if (error) throw new Error(error.message);
                               showToast('Product updated.', 'success');
                             } else {
-                              await supabase.from('products').insert(payload);
+                              const { error } = await supabase.from('products').insert(payload);
+                              if (error) throw new Error(error.message);
                               showToast('Product added.', 'success');
                             }
                             setShowProductModal(false);

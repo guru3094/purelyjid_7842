@@ -73,8 +73,15 @@ export default function BestsellersSection() {
           .order('display_order', { ascending: true })
           .limit(8);
 
-        if (error || !data || data.length === 0) {
+        if (error) {
+          // Only fall back to static on actual network/auth error
           setBestsellers(STATIC_BESTSELLERS);
+          return;
+        }
+
+        if (!data || data.length === 0) {
+          // DB reachable but no active products — show empty (no static fallback)
+          setBestsellers([]);
           return;
         }
 
