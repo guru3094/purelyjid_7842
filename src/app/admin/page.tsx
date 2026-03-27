@@ -507,48 +507,51 @@ export default function AdminPage() {
     setFetchError('');
     try {
       const supabase = createClient();
-      const [ordersRes, usersRes, productsRes, categoriesRes, themesRes, couponsRes, couriersRes, storyRes, workshopRes, customRes, enquiriesRes, pincodesRes, zonesRes] = await Promise.all([
+
+      // ── Batch 1: Core data (orders, users, products, categories, themes) ──
+      const [ordersRes, usersRes, productsRes, categoriesRes, themesRes] = await Promise.all([
         supabase.from('orders').select('*, user_profiles(full_name, email)').order('created_at', { ascending: false }),
         supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
         supabase.from('products').select('*, categories(name)').order('display_order', { ascending: true }),
         supabase.from('categories').select('*').order('display_order', { ascending: true }),
         supabase.from('store_themes').select('*').order('created_at', { ascending: true }),
-        supabase.from('coupons').select('*').order('created_at', { ascending: false }),
-        supabase.from('courier_partners').select('*').order('created_at', { ascending: false }),
-        supabase.from('story_content').select('*').eq('section_key', 'craft_story').single(),
-        supabase.from('workshop_catalogues').select('*').order('created_at', { ascending: false }),
-        supabase.from('custom_products').select('*').order('display_order', { ascending: true }),
-        supabase.from('custom_enquiries').select('*').order('created_at', { ascending: false }),
-        supabase.from('delivery_pincodes').select('*').order('pincode', { ascending: true }),
-        supabase.from('shipping_zones').select('*').order('priority', { ascending: false }),
       ]);
       if (ordersRes.data) setOrders(ordersRes.data);
       if (usersRes.data) setUsers(usersRes.data);
       if (productsRes.data) setProducts(productsRes.data);
       if (categoriesRes.data) setCategories(categoriesRes.data);
       if (themesRes.data) setThemes(themesRes.data);
+
+      // ── Batch 2: Commerce & content data ──
+      const [couponsRes, couriersRes, storyRes, workshopRes, customRes, enquiriesRes] = await Promise.all([
+        supabase.from('coupons').select('*').order('created_at', { ascending: false }),
+        supabase.from('courier_partners').select('*').order('created_at', { ascending: false }),
+        supabase.from('story_content').select('*').eq('section_key', 'craft_story').single(),
+        supabase.from('workshop_catalogues').select('*').order('created_at', { ascending: false }),
+        supabase.from('custom_products').select('*').order('display_order', { ascending: true }),
+        supabase.from('custom_enquiries').select('*').order('created_at', { ascending: false }),
+      ]);
       if (couponsRes.data) setCoupons(couponsRes.data);
       if (couriersRes.data) setCouriers(couriersRes.data);
       if (storyRes.data) { setStoryContent(storyRes.data); setStoryForm(storyRes.data); }
       if (workshopRes.data) setWorkshopCatalogues(workshopRes.data);
       if (customRes.data) setCustomProducts(customRes.data);
       if (enquiriesRes.data) setCustomEnquiries(enquiriesRes.data);
-      if (pincodesRes.data) setPincodes(pincodesRes.data);
-      if (zonesRes.data) setShippingZones(zonesRes.data);
 
-      // Fetch policy pages content
-      const [shippingRes, privacyRes, termsRes] = await Promise.all([
+      // ── Batch 3: Shipping, policy pages & workshops ──
+      const [pincodesRes, zonesRes, shippingRes, privacyRes, termsRes, workshopsRes] = await Promise.all([
+        supabase.from('delivery_pincodes').select('*').order('pincode', { ascending: true }),
+        supabase.from('shipping_zones').select('*').order('priority', { ascending: false }),
         supabase.from('story_content').select('body').eq('section_key', 'shipping_policy').single(),
         supabase.from('story_content').select('body').eq('section_key', 'privacy_policy').single(),
         supabase.from('story_content').select('body').eq('section_key', 'terms_conditions').single(),
+        supabase.from('workshops').select('*').order('created_at', { ascending: false }),
       ]);
+      if (pincodesRes.data) setPincodes(pincodesRes.data);
+      if (zonesRes.data) setShippingZones(zonesRes.data);
       if (shippingRes.data?.body) setShippingContent(shippingRes.data.body);
       if (privacyRes.data?.body) setPrivacyContent(privacyRes.data.body);
       if (termsRes.data?.body) setTermsContent(termsRes.data.body);
-
-      // Fetch workshops
-      const supabase2 = createClient();
-      const workshopsRes = await supabase2.from('workshops').select('*').order('created_at', { ascending: false });
       if (workshopsRes.data) setWorkshops(workshopsRes.data);
     } catch (err: any) {
       setFetchError(err?.message || 'Failed to load data.');
