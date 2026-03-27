@@ -373,7 +373,7 @@ export default function ProductsGrid() {
 
         <div className="flex flex-col lg:flex-row gap-10">
           {/* Sidebar Filter */}
-          <aside className="pg-filter w-full lg:w-64 shrink-0 space-y-8" style={{ opacity: 0 }}>
+          <aside className="pg-filter w-full lg:w-64 shrink-0 space-y-8">
             <div className="sticky top-28 space-y-8">
               <div className="space-y-4">
                 <p className="text-[10px] uppercase tracking-[0.4em] font-bold text-foreground">Category</p>
