@@ -5,6 +5,8 @@ import ProductsHero from './components/ProductsHero';
 import ProductsGrid from './components/ProductsGrid';
 import GoogleReviewsSection from './components/GoogleReviewsSection';
 
+export const dynamic = 'force-dynamic';
+
 export default function ProductsPage() {
   return (
     <main className="bg-[#FAF6F0] overflow-x-hidden">

@@ -6,6 +6,8 @@ import Footer from '@/components/Footer';
 import Icon from '@/components/ui/AppIcon';
 import { createClient } from '@/lib/supabase/client';
 
+export const dynamic = 'force-dynamic';
+
 const STATIC_SECTIONS = [
   {
     title: 'Processing Time',
@@ -50,15 +52,37 @@ export default function ShippingPage() {
     const fetchContent = async () => {
       try {
         const supabase = createClient();
-        const { data } = await supabase?.from('story_content')?.select('body')?.eq('section_key', 'shipping_policy')?.single();
-        if (data?.body) setContent(data?.body);
+        const { data, error } = await supabase?.from('story_content')?.select('body')?.eq('section_key', 'shipping_policy')?.single();
+        // Only fall back to static if there's a real network error AND no data
+        if (error && !data) {
+          // Keep current content (static fallback rendered below)
+        } else if (data?.body) {
+          setContent(data.body);
+        } else {
+          // DB reachable but no content saved yet — show static
+          setContent(null);
+        }
       } catch {
-        // Use static fallback
+        // Network failure — keep static
       } finally {
         setLoading(false);
       }
     };
     fetchContent();
+
+    // Real-time subscription
+    const supabase = createClient();
+    const channel = supabase
+      .channel('shipping-policy-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'story_content', filter: 'section_key=eq.shipping_policy' }, (payload) => {
+        const newBody = (payload.new as any)?.body;
+        if (newBody) setContent(newBody);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (

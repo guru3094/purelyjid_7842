@@ -73,8 +73,8 @@ export default function BestsellersSection() {
           .order('display_order', { ascending: true })
           .limit(8);
 
-        if (error) {
-          // Only fall back to static on actual network/auth error
+        if (error && !data) {
+          // True network/auth failure — fall back to static
           setBestsellers(STATIC_BESTSELLERS);
           return;
         }
@@ -105,7 +105,21 @@ export default function BestsellersSection() {
         setBestsellers(STATIC_BESTSELLERS);
       }
     }
+
     fetchBestsellers();
+
+    // Real-time subscription — refetch when products table changes
+    const supabase = createClient();
+    const channel = supabase
+      .channel('bestsellers-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+        fetchBestsellers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {

@@ -6,6 +6,8 @@ import Icon from '@/components/ui/AppIcon';
 import { useToast } from '@/contexts/ToastContext';
 import { createClient } from '@/lib/supabase/client';
 
+export const dynamic = 'force-dynamic';
+
 interface CustomProduct {
   id: string;
   name: string;

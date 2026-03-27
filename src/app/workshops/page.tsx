@@ -5,6 +5,8 @@ import Footer from '@/components/Footer';
 import Icon from '@/components/ui/AppIcon';
 import { createClient } from '@/lib/supabase/client';
 
+export const dynamic = 'force-dynamic';
+
 interface WorkshopCatalogue {
   id: string;
   title: string;
@@ -176,17 +178,17 @@ export default function WorkshopsPage() {
           supabase.from('workshops').select('*').eq('is_active', true).order('created_at', { ascending: false }),
         ]);
 
-        if (cataloguesRes.error) {
-          // Network error — use fallback
-          setCatalogues(STATIC_CATALOGUES);
-          setDownloadCounts(Object.fromEntries(STATIC_CATALOGUES.map((c) => [c.id, c.download_count])));
-        } else if (!cataloguesRes.data || cataloguesRes.data.length === 0) {
-          // DB reachable but empty — show fallback
+        if (cataloguesRes.error && !cataloguesRes.data) {
+          // True network/auth failure — use fallback
           setCatalogues(STATIC_CATALOGUES);
           setDownloadCounts(Object.fromEntries(STATIC_CATALOGUES.map((c) => [c.id, c.download_count])));
         } else {
-          setCatalogues(cataloguesRes.data);
-          setDownloadCounts(Object.fromEntries(cataloguesRes.data.map((c: WorkshopCatalogue) => [c.id, c.download_count])));
+          const cats = cataloguesRes.data || [];
+          if (cats.length > 0) {
+            setCatalogues(cats);
+            setDownloadCounts(Object.fromEntries(cats.map((c: WorkshopCatalogue) => [c.id, c.download_count])));
+          }
+          // If empty, show empty (admin cleared them) — no static fallback
         }
 
         if (workshopsRes.data && workshopsRes.data.length > 0) {
@@ -200,6 +202,22 @@ export default function WorkshopsPage() {
       }
     };
     fetchData();
+
+    // Real-time subscription for workshop_catalogues and workshops
+    const supabase = createClient();
+    const channel = supabase
+      .channel('workshops-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'workshop_catalogues' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'workshops' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {

@@ -6,6 +6,8 @@ import Footer from '@/components/Footer';
 import Icon from '@/components/ui/AppIcon';
 import { createClient } from '@/lib/supabase/client';
 
+export const dynamic = 'force-dynamic';
+
 const STATIC_SECTIONS = [
   {
     title: 'Acceptance of Terms',
@@ -57,15 +59,35 @@ export default function TermsPage() {
     const fetchContent = async () => {
       try {
         const supabase = createClient();
-        const { data } = await supabase?.from('story_content')?.select('body')?.eq('section_key', 'terms_conditions')?.single();
-        if (data?.body) setContent(data?.body);
+        const { data, error } = await supabase?.from('story_content')?.select('body')?.eq('section_key', 'terms_conditions')?.single();
+        if (error && !data) {
+          // Real network error — keep static
+        } else if (data?.body) {
+          setContent(data.body);
+        } else {
+          setContent(null);
+        }
       } catch {
-        // Use static fallback
+        // Network failure — keep static
       } finally {
         setLoading(false);
       }
     };
     fetchContent();
+
+    // Real-time subscription
+    const supabase = createClient();
+    const channel = supabase
+      .channel('terms-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'story_content', filter: 'section_key=eq.terms_conditions' }, (payload) => {
+        const newBody = (payload.new as any)?.body;
+        if (newBody) setContent(newBody);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (

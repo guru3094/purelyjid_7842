@@ -191,6 +191,22 @@ export default function ProductsGrid() {
       }
     }
     fetchProducts();
+
+    // Real-time subscription — refetch when products or categories change
+    const supabase = createClient();
+    const channel = supabase
+      .channel('products-grid-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+        fetchProducts();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
+        fetchProducts();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
