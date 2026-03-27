@@ -3534,7 +3534,7 @@ export default function AdminPage() {
                   className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-y font-mono"
                 />
                 <div className="mt-4 flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">Changes here are saved for reference. Update <code className="bg-accent-cream px-1 rounded text-[11px]">src/app/shipping/page.tsx</code> to reflect on the live page.</p>
+                  <p className="text-xs text-muted-foreground">Changes are saved to the database and reflected live on the Shipping Policy page.</p>
                   <button
                     onClick={async () => {
                       setSavingShipping(true);
@@ -3576,7 +3576,7 @@ export default function AdminPage() {
                   className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-y font-mono"
                 />
                 <div className="mt-4 flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">Changes here are saved for reference. Update <code className="bg-accent-cream px-1 rounded text-[11px]">src/app/privacy/page.tsx</code> to reflect on the live page.</p>
+                  <p className="text-xs text-muted-foreground">Changes are saved to the database and reflected live on the Privacy Policy page.</p>
                   <button
                     onClick={async () => {
                       setSavingPrivacy(true);
@@ -3618,7 +3618,7 @@ export default function AdminPage() {
                   className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-y font-mono"
                 />
                 <div className="mt-4 flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">Changes here are saved for reference. Update <code className="bg-accent-cream px-1 rounded text-[11px]">src/app/terms/page.tsx</code> to reflect on the live page.</p>
+                  <p className="text-xs text-muted-foreground">Changes are saved to the database and reflected live on the Terms &amp; Conditions page.</p>
                   <button
                     onClick={async () => {
                       setSavingTerms(true);

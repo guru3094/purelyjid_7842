@@ -60,7 +60,7 @@ export default function CraftStorySection() {
         const { data } = await supabase
           .from('story_content')
           .select('*')
-          .eq('section_key', 'our_story')
+          .eq('section_key', 'craft_story')
           .single();
         if (data) {
           setStory({

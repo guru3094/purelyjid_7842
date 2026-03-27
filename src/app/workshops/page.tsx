@@ -3,6 +3,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Icon from '@/components/ui/AppIcon';
+import { createClient } from '@/lib/supabase/client';
 
 interface WorkshopCatalogue {
   id: string;
@@ -14,6 +15,20 @@ interface WorkshopCatalogue {
   thumbnail_url: string | null;
   download_count: number;
   created_at: string;
+  is_active: boolean;
+}
+
+interface Workshop {
+  id: string;
+  title: string;
+  description: string;
+  instructor: string;
+  location: string;
+  workshop_date: string | null;
+  duration: string;
+  price: number;
+  max_participants: number | null;
+  is_active: boolean;
 }
 
 interface GoogleReview {
@@ -35,7 +50,7 @@ interface PlaceData {
 const STORAGE_KEY_API = 'gplaces_api_key';
 const STORAGE_KEY_PLACE = 'gplaces_place_id';
 
-// Static workshop data — no database required
+// Static fallback catalogues — only used if Supabase is unreachable
 const STATIC_CATALOGUES: WorkshopCatalogue[] = [
 {
   id: '1',
@@ -46,7 +61,8 @@ const STATIC_CATALOGUES: WorkshopCatalogue[] = [
   file_size: 2400000,
   thumbnail_url: "https://img.rocket.new/generatedImages/rocket_gen_img_1caf29658-1765028281978.png",
   download_count: 142,
-  created_at: '2026-01-15T10:00:00Z'
+  created_at: '2026-01-15T10:00:00Z',
+  is_active: true,
 },
 {
   id: '2',
@@ -57,7 +73,8 @@ const STATIC_CATALOGUES: WorkshopCatalogue[] = [
   file_size: 3100000,
   thumbnail_url: "https://img.rocket.new/generatedImages/rocket_gen_img_1c709ac32-1772255564482.png",
   download_count: 98,
-  created_at: '2026-01-20T10:00:00Z'
+  created_at: '2026-01-20T10:00:00Z',
+  is_active: true,
 },
 {
   id: '3',
@@ -68,7 +85,8 @@ const STATIC_CATALOGUES: WorkshopCatalogue[] = [
   file_size: 4200000,
   thumbnail_url: "https://img.rocket.new/generatedImages/rocket_gen_img_11d21480a-1766821759180.png",
   download_count: 67,
-  created_at: '2026-02-01T10:00:00Z'
+  created_at: '2026-02-01T10:00:00Z',
+  is_active: true,
 },
 {
   id: '4',
@@ -79,7 +97,8 @@ const STATIC_CATALOGUES: WorkshopCatalogue[] = [
   file_size: 2800000,
   thumbnail_url: "https://img.rocket.new/generatedImages/rocket_gen_img_131e1516a-1771900598704.png",
   download_count: 115,
-  created_at: '2026-02-10T10:00:00Z'
+  created_at: '2026-02-10T10:00:00Z',
+  is_active: true,
 },
 {
   id: '5',
@@ -90,7 +109,8 @@ const STATIC_CATALOGUES: WorkshopCatalogue[] = [
   file_size: 1900000,
   thumbnail_url: "https://img.rocket.new/generatedImages/rocket_gen_img_1a90d3520-1767203344847.png",
   download_count: 44,
-  created_at: '2026-02-15T10:00:00Z'
+  created_at: '2026-02-15T10:00:00Z',
+  is_active: true,
 },
 {
   id: '6',
@@ -101,7 +121,8 @@ const STATIC_CATALOGUES: WorkshopCatalogue[] = [
   file_size: 2100000,
   thumbnail_url: "https://img.rocket.new/generatedImages/rocket_gen_img_1f6f366b7-1774462355782.png",
   download_count: 89,
-  created_at: '2026-02-20T10:00:00Z'
+  created_at: '2026-02-20T10:00:00Z',
+  is_active: true,
 }];
 
 
@@ -132,11 +153,11 @@ function StarRating({ rating, size = 14 }: {rating: number;size?: number;}) {
 }
 
 export default function WorkshopsPage() {
-  const [catalogues] = useState<WorkshopCatalogue[]>(STATIC_CATALOGUES);
+  const [catalogues, setCatalogues] = useState<WorkshopCatalogue[]>([]);
+  const [workshops, setWorkshops] = useState<Workshop[]>([]);
+  const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
-  const [downloadCounts, setDownloadCounts] = useState<Record<string, number>>(
-    Object.fromEntries(STATIC_CATALOGUES.map((c) => [c.id, c.download_count]))
-  );
+  const [downloadCounts, setDownloadCounts] = useState<Record<string, number>>({});
 
   // Google Reviews state
   const [savedApiKey, setSavedApiKey] = useState('');
@@ -144,6 +165,42 @@ export default function WorkshopsPage() {
   const [placeData, setPlaceData] = useState<PlaceData | null>(null);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewsError, setReviewsError] = useState('');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const supabase = createClient();
+        const [cataloguesRes, workshopsRes] = await Promise.all([
+          supabase.from('workshop_catalogues').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+          supabase.from('workshops').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+        ]);
+
+        if (cataloguesRes.error) {
+          // Network error — use fallback
+          setCatalogues(STATIC_CATALOGUES);
+          setDownloadCounts(Object.fromEntries(STATIC_CATALOGUES.map((c) => [c.id, c.download_count])));
+        } else if (!cataloguesRes.data || cataloguesRes.data.length === 0) {
+          // DB reachable but empty — show fallback
+          setCatalogues(STATIC_CATALOGUES);
+          setDownloadCounts(Object.fromEntries(STATIC_CATALOGUES.map((c) => [c.id, c.download_count])));
+        } else {
+          setCatalogues(cataloguesRes.data);
+          setDownloadCounts(Object.fromEntries(cataloguesRes.data.map((c: WorkshopCatalogue) => [c.id, c.download_count])));
+        }
+
+        if (workshopsRes.data && workshopsRes.data.length > 0) {
+          setWorkshops(workshopsRes.data);
+        }
+      } catch {
+        setCatalogues(STATIC_CATALOGUES);
+        setDownloadCounts(Object.fromEntries(STATIC_CATALOGUES.map((c) => [c.id, c.download_count])));
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   useEffect(() => {
     const storedKey = localStorage.getItem(STORAGE_KEY_API) || '';
@@ -180,6 +237,15 @@ export default function WorkshopsPage() {
 
   const handleDownload = async (catalogue: WorkshopCatalogue) => {
     setDownloading(catalogue.id);
+
+    // Increment download count in DB
+    try {
+      const supabase = createClient();
+      await supabase.from('workshop_catalogues').update({ download_count: (catalogue.download_count || 0) + 1 }).eq('id', catalogue.id);
+    } catch {
+      // ignore
+    }
+
     await new Promise((r) => setTimeout(r, 600));
 
     if (catalogue.file_url && catalogue.file_url !== '#') {
@@ -223,203 +289,156 @@ export default function WorkshopsPage() {
         </div>
       </section>
 
+      {/* Upcoming Workshops */}
+      {workshops.length > 0 && (
+        <section className="pb-16 px-6">
+          <div className="mx-auto max-w-6xl">
+            <h2 className="font-display italic text-3xl font-semibold text-foreground mb-8 text-center">Upcoming Workshops</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {workshops.map((w) => (
+                <div key={w.id} className="bg-white rounded-3xl border border-[rgba(184,92,56,0.12)] p-6 hover:shadow-card transition-shadow">
+                  <h3 className="font-semibold text-foreground text-lg mb-2">{w.title}</h3>
+                  {w.description && <p className="text-sm text-muted-foreground mb-4 line-clamp-3">{w.description}</p>}
+                  <div className="space-y-1.5 text-xs text-muted-foreground">
+                    {w.instructor && <div className="flex items-center gap-2"><Icon name="UserIcon" size={12} /><span>{w.instructor}</span></div>}
+                    {w.location && <div className="flex items-center gap-2"><Icon name="MapPinIcon" size={12} /><span>{w.location}</span></div>}
+                    {w.workshop_date && <div className="flex items-center gap-2"><Icon name="CalendarIcon" size={12} /><span>{new Date(w.workshop_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div>}
+                    {w.duration && <div className="flex items-center gap-2"><Icon name="ClockIcon" size={12} /><span>{w.duration}</span></div>}
+                  </div>
+                  {w.price > 0 && (
+                    <div className="mt-4 flex items-center justify-between">
+                      <span className="font-semibold text-foreground">₹{w.price.toLocaleString('en-IN')}</span>
+                      <a
+                        href={`https://wa.me/919518770073?text=${encodeURIComponent(`Hi PurelyJid! I'd like to register for the *${w.title}* workshop. 🌸`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="h-8 px-4 rounded-full bg-green-500 text-white text-[10px] font-bold uppercase tracking-[0.15em] hover:bg-green-600 transition-colors flex items-center gap-1.5"
+                      >
+                        Register
+                      </a>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Catalogues Grid */}
       <section className="pb-24 px-6">
         <div className="mx-auto max-w-6xl">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {catalogues.map((cat) =>
-            <div key={cat.id} className="bg-white rounded-3xl border border-[rgba(184,92,56,0.12)] overflow-hidden hover:shadow-card transition-shadow group">
-                {/* Thumbnail */}
-                <div className="relative h-48 bg-gradient-to-br from-[#FBF7F2] to-[#EDE4D8] flex items-center justify-center overflow-hidden">
-                  {cat.thumbnail_url ?
-                <img
-                  src={cat.thumbnail_url}
-                  alt={`${cat.title} workshop catalogue thumbnail`}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> :
-
-
-                <div className="flex flex-col items-center gap-3">
-                      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-                        <Icon name="DocumentArrowDownIcon" size={28} className="text-primary" />
-                      </div>
-                      <span className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">PDF Catalogue</span>
-                    </div>
-                }
-                  <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 flex items-center gap-1.5">
-                    <Icon name="ArrowDownTrayIcon" size={12} className="text-muted-foreground" />
-                    <span className="text-[10px] font-bold text-muted-foreground">{downloadCounts[cat.id] ?? cat.download_count}</span>
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1,2,3,4,5,6].map((i) => (
+                <div key={i} className="bg-white rounded-3xl border border-[rgba(184,92,56,0.12)] overflow-hidden animate-pulse">
+                  <div className="h-48 bg-gray-100" />
+                  <div className="p-6 space-y-3">
+                    <div className="h-4 bg-gray-100 rounded w-3/4" />
+                    <div className="h-3 bg-gray-100 rounded w-full" />
+                    <div className="h-3 bg-gray-100 rounded w-5/6" />
                   </div>
                 </div>
-
-                {/* Content */}
-                <div className="p-6">
-                  <h3 className="font-display italic text-xl font-semibold text-foreground mb-2">{cat.title}</h3>
-                  {cat.description &&
-                <p className="text-sm text-muted-foreground leading-relaxed mb-4 line-clamp-2">{cat.description}</p>
-                }
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Icon name="DocumentIcon" size={13} />
-                      <span>{cat.file_name}</span>
-                    </div>
-                    {cat.file_size > 0 &&
-                  <span className="text-xs text-muted-foreground">{formatFileSize(cat.file_size)}</span>
-                  }
-                  </div>
-                  <button
-                  onClick={() => handleDownload(cat)}
-                  disabled={downloading === cat.id}
-                  className="w-full h-11 rounded-full bg-foreground text-[#FBF7F2] text-xs font-semibold uppercase tracking-[0.2em] hover:bg-primary transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                  
-                    {downloading === cat.id ?
-                  <><div className="w-3.5 h-3.5 border border-white/30 border-t-white rounded-full animate-spin" />Downloading…</> :
-
-                  <><Icon name="ArrowDownTrayIcon" size={14} />Download Catalogue</>
-                  }
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* CTA */}
-          <div className="mt-16 bg-white rounded-3xl border border-[rgba(184,92,56,0.12)] p-8 md:p-12 text-center">
-            <h2 className="font-display italic text-3xl font-semibold text-foreground mb-3">
-              Want to Book a Workshop?
-            </h2>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
-              Reach out directly to reserve your spot or ask about custom group sessions.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <a
-                href="https://wa.me/919518770073?text=Hi%20PurelyJid!%20I%27d%20like%20to%20book%20a%20workshop.%20Could%20you%20share%20available%20dates%3F"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-green-500 text-white text-xs font-semibold uppercase tracking-[0.2em] hover:bg-green-600 transition-colors">
-                
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-                </svg>
-                WhatsApp Us
-              </a>
-              <a
-                href="tel:+919518770073"
-                className="inline-flex items-center gap-2 h-11 px-6 rounded-full border border-[rgba(184,92,56,0.3)] text-foreground text-xs font-semibold uppercase tracking-[0.2em] hover:border-primary hover:text-primary transition-colors">
-                
-                <Icon name="PhoneIcon" size={14} />
-                Call Us
-              </a>
+              ))}
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {catalogues.map((cat) =>
+              <div key={cat.id} className="bg-white rounded-3xl border border-[rgba(184,92,56,0.12)] overflow-hidden hover:shadow-card transition-shadow group">
+                  {/* Thumbnail */}
+                  <div className="relative h-48 bg-gradient-to-br from-[#FBF7F2] to-[#EDE4D8] flex items-center justify-center overflow-hidden">
+                    {cat.thumbnail_url ?
+                  <img
+                    src={cat.thumbnail_url}
+                    alt={`${cat.title} workshop catalogue thumbnail`}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> :
+
+
+                  <div className="flex flex-col items-center gap-3">
+                        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+                          <Icon name="DocumentArrowDownIcon" size={28} className="text-primary" />
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">PDF Catalogue</span>
+                      </div>
+                  }
+                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 flex items-center gap-1.5">
+                      <Icon name="ArrowDownTrayIcon" size={12} className="text-muted-foreground" />
+                      <span className="text-[10px] font-bold text-muted-foreground">{downloadCounts[cat.id] ?? cat.download_count}</span>
+                    </div>
+                  </div>
+
+                  {/* Content */}
+                  <div className="p-6">
+                    <h3 className="font-semibold text-foreground text-lg mb-2 leading-snug">{cat.title}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed mb-4 line-clamp-3">{cat.description}</p>
+
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-5">
+                      <span>{cat.file_name}</span>
+                      <span>{formatFileSize(cat.file_size)}</span>
+                    </div>
+
+                    <button
+                      onClick={() => handleDownload(cat)}
+                      disabled={downloading === cat.id}
+                      className="w-full h-11 rounded-full bg-foreground text-[#FAF6F0] text-xs font-bold uppercase tracking-[0.2em] hover:bg-primary transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {downloading === cat.id ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Preparing…
+                        </>
+                      ) : (
+                        <>
+                          <Icon name="ArrowDownTrayIcon" size={14} />
+                          Download Catalogue
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Google Reviews Section */}
-      {savedApiKey && savedPlaceId &&
-      <section className="pb-24 px-6">
+      {/* Google Reviews */}
+      {(reviewsLoading || placeData) && (
+        <section className="pb-24 px-6">
           <div className="mx-auto max-w-6xl">
-            <div className="flex items-center justify-between mb-10">
-              <div>
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 mb-3">
-                  <svg className="w-3.5 h-3.5 text-primary" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-3.15c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                  </svg>
-                  <span className="text-[11px] uppercase tracking-[0.3em] font-bold text-primary">Google Reviews</span>
-                </div>
-                <h2 className="font-display italic text-3xl font-semibold text-foreground">What Our Customers Say</h2>
-                {placeData &&
-              <div className="flex items-center gap-3 mt-2">
-                    <StarRating rating={placeData.rating} size={16} />
-                    <span className="text-sm font-bold text-foreground">{placeData.rating?.toFixed(1)}</span>
-                    <span className="text-sm text-muted-foreground">({placeData.user_ratings_total?.toLocaleString()} reviews)</span>
-                  </div>
-              }
+            <h2 className="font-display italic text-3xl font-semibold text-foreground mb-8 text-center">What Our Students Say</h2>
+            {reviewsLoading && (
+              <div className="flex justify-center py-12">
+                <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
               </div>
-            </div>
-
-            {reviewsLoading &&
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {Array.from({ length: 3 }).map((_, i) =>
-            <div key={i} className="bg-white rounded-2xl border border-[rgba(184,92,56,0.12)] p-6 animate-pulse">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-full bg-[#EDE4D8]" />
-                      <div className="min-w-0 flex-1">
-                        <div className="h-3.5 w-2/3 bg-[#EDE4D8] rounded mb-1" />
-                        <div className="h-3 w-1/3 bg-[#EDE4D8] rounded" />
+            )}
+            {reviewsError && <p className="text-center text-sm text-red-500">{reviewsError}</p>}
+            {placeData && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {placeData.reviews?.slice(0, 6).map((review, i) => (
+                  <div key={i} className="bg-white rounded-3xl border border-[rgba(184,92,56,0.12)] p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      {review.profile_photo_url && (
+                        <img src={review.profile_photo_url} alt={review.author_name} className="w-10 h-10 rounded-full object-cover" />
+                      )}
+                      <div>
+                        <p className="font-semibold text-sm text-foreground">{review.author_name}</p>
+                        <StarRating rating={review.rating} size={12} />
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <div className="h-3 w-full bg-[#EDE4D8] rounded" />
-                      <div className="h-3 w-5/6 bg-[#EDE4D8] rounded" />
-                      <div className="h-3 w-4/6 bg-[#EDE4D8] rounded" />
-                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed line-clamp-4">{review.text}</p>
+                    {review.relative_time_description && (
+                      <p className="text-xs text-muted-foreground/60 mt-3">{review.relative_time_description}</p>
+                    )}
                   </div>
+                ))}
+              </div>
             )}
-              </div>
-          }
-
-            {reviewsError &&
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex items-start gap-3">
-                <Icon name="ExclamationCircleIcon" size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-red-700 mb-1">Failed to load reviews</p>
-                  <p className="text-xs text-red-600">{reviewsError}</p>
-                </div>
-              </div>
-          }
-
-            {placeData && placeData.reviews && placeData.reviews.length > 0 &&
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {placeData.reviews.map((review, idx) =>
-            <div key={idx} className="bg-white rounded-2xl border border-[rgba(184,92,56,0.12)] p-6 flex flex-col hover:shadow-sm transition-shadow">
-                    <div className="flex items-center gap-3 mb-4">
-                      {review.profile_photo_url ?
-                <img
-                  src={review.profile_photo_url}
-                  alt={`${review.author_name} profile photo`}
-                  className="w-10 h-10 rounded-full object-cover flex-shrink-0" /> :
-
-
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm font-bold text-primary">
-                            {review.author_name?.charAt(0)?.toUpperCase() || 'G'}
-                          </span>
-                        </div>
-                }
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-foreground truncate">{review.author_name}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {review.relative_time_description || new Date(review.time * 1000).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
-                        </p>
-                      </div>
-                    </div>
-                    <StarRating rating={review.rating} size={13} />
-                    {review.text &&
-              <p className="mt-3 text-sm text-muted-foreground leading-relaxed flex-1 line-clamp-5">
-                        {review.text}
-                      </p>
-              }
-                    <div className="mt-4 flex items-center gap-1.5 pt-3 border-t border-[rgba(184,92,56,0.08)]">
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                      </svg>
-                      <span className="text-[10px] text-muted-foreground font-medium">Google Review</span>
-                    </div>
-                  </div>
-            )}
-              </div>
-          }
           </div>
         </section>
-      }
+      )}
 
       <Footer />
-    </main>);
-
+    </main>
+  );
 }
