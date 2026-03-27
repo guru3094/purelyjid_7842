@@ -5,95 +5,112 @@ import AppImage from '@/components/ui/AppImage';
 import Icon from '@/components/ui/AppIcon';
 import Link from 'next/link';
 import { useCart } from '@/contexts/CartContext';
+import { createClient } from '@/lib/supabase/client';
 
-const ALL_PRODUCTS = [
+interface Product {
+  id: string | number;
+  name: string;
+  category: string;
+  material: string;
+  price: number;
+  originalPrice: number | null;
+  rating: number;
+  reviews: number;
+  badge: string | null;
+  badgeColor: string;
+  image: string;
+  alt: string;
+  inStock: boolean;
+  slug: string;
+}
+
+const STATIC_PRODUCTS: Product[] = [
   {
     id: 1, name: 'Aurora Resin Pendant', category: 'Jewelry', material: 'Resin + Crystal',
     price: 38, originalPrice: 48, rating: 4.9, reviews: 214, badge: 'Bestseller', badgeColor: 'bg-primary',
     image: "https://images.unsplash.com/photo-1676157211877-760c3d400217",
     alt: 'Aurora-colored resin pendant with purple and teal swirls on silver chain',
-    inStock: true
+    inStock: true, slug: 'aurora-resin-pendant'
   },
   {
     id: 2, name: 'Galaxy Geode Tray', category: 'Home Décor', material: 'Resin + Gold Leaf',
     price: 64, originalPrice: null, rating: 5.0, reviews: 89, badge: 'New', badgeColor: 'bg-secondary',
     image: "https://img.rocket.new/generatedImages/rocket_gen_img_1545b4ef2-1771900598709.png",
     alt: 'Oval resin serving tray with deep blue and gold galaxy pattern on dark surface',
-    inStock: true
+    inStock: true, slug: 'galaxy-geode-tray'
   },
   {
     id: 3, name: 'Floral Resin Earrings', category: 'Jewelry', material: 'Resin + Dried Flowers',
     price: 24, originalPrice: null, rating: 4.8, reviews: 341, badge: 'Popular', badgeColor: 'bg-accent-gold',
     image: "https://img.rocket.new/generatedImages/rocket_gen_img_1bb068302-1772088252319.png",
     alt: 'Translucent resin earrings with real dried flower inclusions in teardrop shape',
-    inStock: true
+    inStock: true, slug: 'floral-resin-earrings'
   },
   {
     id: 4, name: 'Complete Starter Kit', category: 'DIY Supplies', material: 'Resin + Pigments',
     price: 52, originalPrice: 68, rating: 4.9, reviews: 156, badge: 'Gift Idea', badgeColor: 'bg-primary',
     image: "https://img.rocket.new/generatedImages/rocket_gen_img_130a82f81-1772220075768.png",
     alt: 'Resin art starter kit with clear resin bottles, silicone molds, and color pigments spread out',
-    inStock: true
+    inStock: true, slug: 'complete-starter-kit'
   },
   {
     id: 5, name: 'Ocean Wave Coaster Set', category: 'Home Décor', material: 'Resin + Mica',
     price: 42, originalPrice: null, rating: 5.0, reviews: 72, badge: 'New', badgeColor: 'bg-secondary',
     image: "https://images.unsplash.com/photo-1626195850148-820e10d928f6",
     alt: 'Set of four round resin coasters with ocean wave patterns in shades of blue and white',
-    inStock: true
+    inStock: true, slug: 'ocean-wave-coaster-set'
   },
   {
     id: 6, name: 'Pressed Flower Bookmark', category: 'Stationery', material: 'Resin + Botanicals',
     price: 18, originalPrice: null, rating: 4.7, reviews: 198, badge: null, badgeColor: '',
     image: "https://images.unsplash.com/photo-1677737775719-b6824065d398",
     alt: 'Delicate clear resin bookmarks with colorful pressed flowers and gold leaf on open book pages',
-    inStock: true
+    inStock: true, slug: 'pressed-flower-bookmark'
   },
   {
     id: 7, name: 'Geode Wall Clock', category: 'Home Décor', material: 'Resin + Agate',
     price: 88, originalPrice: 110, rating: 4.9, reviews: 44, badge: 'Limited', badgeColor: 'bg-accent-gold',
     image: "https://img.rocket.new/generatedImages/rocket_gen_img_1e3c8f66e-1772996476517.png",
     alt: 'Round wall clock with geode-inspired resin face in rose gold and ivory tones',
-    inStock: false
+    inStock: false, slug: 'geode-wall-clock'
   },
   {
     id: 8, name: 'Resin Ring Set', category: 'Jewelry', material: 'Resin + Glitter',
     price: 29, originalPrice: null, rating: 4.6, reviews: 127, badge: null, badgeColor: '',
     image: "https://images.unsplash.com/photo-1705058715556-ec2e1a8327b4",
     alt: 'Set of three colorful resin rings with glitter inclusions on marble surface',
-    inStock: true
+    inStock: true, slug: 'resin-ring-set'
   },
   {
     id: 9, name: 'Pigment Powder Set', category: 'DIY Supplies', material: 'Mica Powder',
     price: 34, originalPrice: null, rating: 4.8, reviews: 203, badge: 'Popular', badgeColor: 'bg-accent-gold',
     image: "https://img.rocket.new/generatedImages/rocket_gen_img_1f764a867-1771900600936.png",
     alt: 'Collection of vibrant mica pigment powder jars in metallic and pearlescent colors',
-    inStock: true
+    inStock: true, slug: 'pigment-powder-set'
   },
   {
     id: 10, name: 'Resin Photo Frame', category: 'Home Décor', material: 'Resin + Shells',
     price: 46, originalPrice: null, rating: 4.9, reviews: 61, badge: 'New', badgeColor: 'bg-secondary',
     image: "https://img.rocket.new/generatedImages/rocket_gen_img_13091368f-1772088172091.png",
     alt: 'Handcrafted resin photo frame with embedded seashells and ocean-blue pigment swirls',
-    inStock: true
+    inStock: true, slug: 'resin-photo-frame'
   },
   {
     id: 11, name: 'Silicone Mold Bundle', category: 'DIY Supplies', material: 'Silicone',
     price: 26, originalPrice: 32, rating: 4.7, reviews: 89, badge: null, badgeColor: '',
     image: "https://img.rocket.new/generatedImages/rocket_gen_img_131eb6c4b-1766490611748.png",
     alt: 'Bundle of various silicone resin casting molds including geometric and organic shapes',
-    inStock: true
+    inStock: true, slug: 'silicone-mold-bundle'
   },
   {
     id: 12, name: 'Resin Keychain Set', category: 'Accessories', material: 'Resin + Foil',
     price: 22, originalPrice: null, rating: 4.8, reviews: 176, badge: 'Gift Idea', badgeColor: 'bg-primary',
     image: "https://img.rocket.new/generatedImages/rocket_gen_img_1829ab903-1772088721014.png",
     alt: 'Set of four colorful resin keychains with gold foil and floral inclusions on keyring',
-    inStock: true
+    inStock: true, slug: 'resin-keychain-set'
   }
 ];
 
-const CATEGORIES = ['All', 'Jewelry', 'Home Décor', 'DIY Supplies', 'Stationery', 'Accessories'];
 const SORT_OPTIONS = [
   { value: 'featured', label: 'Featured' },
   { value: 'price-asc', label: 'Price: Low to High' },
@@ -106,24 +123,73 @@ export default function ProductsGrid() {
   const searchParams = useSearchParams();
   const urlSearch = searchParams?.get('search') || '';
 
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>(['All']);
+  const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('All');
   const [sortBy, setSortBy] = useState('featured');
   const [priceMax, setPriceMax] = useState(120);
-  const [wishlist, setWishlist] = useState<number[]>([]);
+  const [wishlist, setWishlist] = useState<(string | number)[]>([]);
   const [visibleCount, setVisibleCount] = useState(9);
   const [inStockOnly, setInStockOnly] = useState(false);
-
   const [searchQuery, setSearchQuery] = useState(urlSearch);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
-
   const { addToCart } = useCart();
   const [cartToast, setCartToast] = useState<string | null>(null);
 
   useEffect(() => {
-    if (urlSearch) {
-      setSearchQuery(urlSearch);
+    async function fetchProducts() {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('products')
+          .select('id, name, slug, price, original_price, material, badge, badge_color, image_url, alt_text, in_stock, is_active, display_order, categories(name)')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true });
+
+        if (error || !data || data.length === 0) {
+          setAllProducts(STATIC_PRODUCTS);
+          setCategories(['All', 'Jewelry', 'Home Décor', 'DIY Supplies', 'Stationery', 'Accessories']);
+        } else {
+          const mapped: Product[] = data.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            slug: p.slug || p.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+            category: p.categories?.name || 'Uncategorized',
+            material: p.material || '',
+            price: Math.round((p.price || 0) / 100),
+            originalPrice: p.original_price ? Math.round(p.original_price / 100) : null,
+            rating: 4.8,
+            reviews: 0,
+            badge: p.badge || null,
+            badgeColor: p.badge_color || 'bg-primary',
+            image: p.image_url || 'https://images.unsplash.com/photo-1676157211877-760c3d400217',
+            alt: p.alt_text || p.name,
+            inStock: p.in_stock !== false,
+          }));
+
+          setAllProducts(mapped);
+
+          const uniqueCategories = ['All', ...Array.from(new Set(mapped.map((p) => p.category)))];
+          setCategories(uniqueCategories);
+
+          // Adjust priceMax to fit the actual data range
+          const maxPrice = Math.max(...mapped.map((p) => p.price), 120);
+          setPriceMax(maxPrice);
+        }
+      } catch {
+        setAllProducts(STATIC_PRODUCTS);
+        setCategories(['All', 'Jewelry', 'Home Décor', 'DIY Supplies', 'Stationery', 'Accessories']);
+      } finally {
+        setLoading(false);
+      }
     }
+    fetchProducts();
+  }, []);
+
+  useEffect(() => {
+    if (urlSearch) setSearchQuery(urlSearch);
   }, [urlSearch]);
 
   useEffect(() => {
@@ -153,13 +219,15 @@ export default function ProductsGrid() {
     init();
   }, []);
 
+  const maxPrice = allProducts.length > 0 ? Math.max(...allProducts.map((p) => p.price), 120) : 120;
+
   const suggestions = searchQuery.trim().length >= 1
-    ? ALL_PRODUCTS
+    ? allProducts
         .filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.category.toLowerCase().includes(searchQuery.toLowerCase()))
         .slice(0, 5)
     : [];
 
-  const filtered = ALL_PRODUCTS
+  const filtered = allProducts
     .filter((p) => {
       const matchesCategory = activeCategory === 'All' || p.category === activeCategory;
       const matchesPrice = p.price <= priceMax;
@@ -179,7 +247,7 @@ export default function ProductsGrid() {
 
   const visible = filtered.slice(0, visibleCount);
 
-  const toggleWishlist = (id: number) => {
+  const toggleWishlist = (id: string | number) => {
     setWishlist((prev) => prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]);
   };
 
@@ -195,9 +263,9 @@ export default function ProductsGrid() {
     setVisibleCount(9);
   };
 
-  const handleAddToCart = (product: typeof ALL_PRODUCTS[0]) => {
+  const handleAddToCart = (product: Product) => {
     addToCart({
-      id: product.id,
+      id: typeof product.id === 'string' ? product.id.charCodeAt(0) : product.id as number,
       name: product.name,
       category: product.category,
       price: Math.round(product.price * 100),
@@ -208,6 +276,24 @@ export default function ProductsGrid() {
     setCartToast(`"${product.name}" added to cart!`);
     setTimeout(() => setCartToast(null), 3000);
   };
+
+  if (loading) {
+    return (
+      <section className="py-12 px-6 pb-28">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 mt-8">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="animate-pulse">
+                <div className="aspect-[3/4] rounded-xl bg-gray-200 mb-4" />
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                <div className="h-4 bg-gray-200 rounded w-1/2" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="py-12 px-6 pb-28">
@@ -252,7 +338,7 @@ export default function ProductsGrid() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground truncate">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">{p.category} · ${p.price}</p>
+                      <p className="text-xs text-muted-foreground">{p.category} · ₹{p.price}</p>
                     </div>
                     <Icon name="ArrowUpLeftIcon" size={13} className="text-muted-foreground shrink-0" />
                   </button>
@@ -287,13 +373,13 @@ export default function ProductsGrid() {
               <div className="space-y-4">
                 <p className="text-[10px] uppercase tracking-[0.4em] font-bold text-foreground">Category</p>
                 <div className="flex flex-wrap lg:flex-col gap-2">
-                  {CATEGORIES.map((cat) => (
+                  {categories.map((cat) => (
                     <button
                       key={cat}
                       onClick={() => { setActiveCategory(cat); setVisibleCount(9); }}
                       className={`filter-btn px-4 py-2.5 rounded-full border text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-300 ${
                         activeCategory === cat
-                          ? 'bg-primary text-white border-primary' :'border-[rgba(196,120,90,0.2)] text-muted-foreground hover:border-primary hover:text-primary'
+                          ? 'bg-primary text-white border-primary' : 'border-[rgba(196,120,90,0.2)] text-muted-foreground hover:border-primary hover:text-primary'
                       }`}
                     >
                       {cat}
@@ -305,20 +391,20 @@ export default function ProductsGrid() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] uppercase tracking-[0.4em] font-bold text-foreground">Max Price</p>
-                  <span className="text-sm font-bold text-primary">${priceMax}</span>
+                  <span className="text-sm font-bold text-primary">₹{priceMax}</span>
                 </div>
                 <input
                   type="range"
-                  min={18}
-                  max={120}
+                  min={0}
+                  max={maxPrice}
                   value={priceMax}
                   onChange={(e) => { setPriceMax(Number(e.target.value)); setVisibleCount(9); }}
                   className="w-full"
                   aria-label="Maximum price filter"
                 />
                 <div className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>$18</span>
-                  <span>$120</span>
+                  <span>₹0</span>
+                  <span>₹{maxPrice}</span>
                 </div>
               </div>
 
@@ -338,9 +424,9 @@ export default function ProductsGrid() {
                 </label>
               </div>
 
-              {(activeCategory !== 'All' || priceMax !== 120 || inStockOnly || searchQuery) && (
+              {(activeCategory !== 'All' || priceMax !== maxPrice || inStockOnly || searchQuery) && (
                 <button
-                  onClick={() => { setActiveCategory('All'); setPriceMax(120); setInStockOnly(false); clearSearch(); setVisibleCount(9); }}
+                  onClick={() => { setActiveCategory('All'); setPriceMax(maxPrice); setInStockOnly(false); clearSearch(); setVisibleCount(9); }}
                   className="flex items-center gap-2 text-xs font-semibold text-primary hover:underline"
                 >
                   <Icon name="ArrowPathIcon" size={13} />
@@ -361,13 +447,13 @@ export default function ProductsGrid() {
           <div className="flex-1 space-y-8">
             <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-[rgba(196,120,90,0.12)]">
               <div className="flex flex-wrap gap-2">
-                {CATEGORIES.slice(0, 4).map((cat) => (
+                {categories.slice(0, 4).map((cat) => (
                   <button
                     key={cat}
                     onClick={() => { setActiveCategory(cat); setVisibleCount(9); }}
                     className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] border transition-all duration-300 ${
                       activeCategory === cat
-                        ? 'bg-primary text-white border-primary' :'border-[rgba(196,120,90,0.2)] text-muted-foreground hover:border-primary hover:text-primary'
+                        ? 'bg-primary text-white border-primary' : 'border-[rgba(196,120,90,0.2)] text-muted-foreground hover:border-primary hover:text-primary'
                     }`}
                   >
                     {cat}
@@ -395,7 +481,7 @@ export default function ProductsGrid() {
                 <p className="font-display text-2xl font-bold text-foreground">No products found</p>
                 <p className="text-muted-foreground text-sm">Try adjusting your filters or search</p>
                 <button
-                  onClick={() => { setActiveCategory('All'); setPriceMax(120); setInStockOnly(false); clearSearch(); }}
+                  onClick={() => { setActiveCategory('All'); setPriceMax(maxPrice); setInStockOnly(false); clearSearch(); }}
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-white text-xs font-bold uppercase tracking-[0.2em] hover:bg-primary/90 transition-colors"
                 >
                   <Icon name="ArrowPathIcon" size={14} />
@@ -406,7 +492,7 @@ export default function ProductsGrid() {
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                 {visible.map((product) => (
                   <div key={product.id} className="product-card group">
-                    <Link href={`/products/${product.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`} className="block">
+                    <Link href={`/products/${product.slug}`} className="block">
                     <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-white shadow-card mb-4">
                       <AppImage
                         src={product.image}
@@ -464,27 +550,29 @@ export default function ProductsGrid() {
                           {product.name}
                         </h2>
                       </div>
-                      <p className="text-[10px] text-muted-foreground">{product.material}</p>
+                      {product.material && <p className="text-[10px] text-muted-foreground">{product.material}</p>}
 
-                      <div className="flex items-center gap-2">
-                        <div className="flex gap-0.5">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <span key={i} className={`text-sm ${i < Math.floor(product.rating) ? 'star-filled' : 'text-muted-foreground'}`}>
-                              ★
-                            </span>
-                          ))}
+                      {product.reviews > 0 && (
+                        <div className="flex items-center gap-2">
+                          <div className="flex gap-0.5">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <span key={i} className={`text-sm ${i < Math.floor(product.rating) ? 'star-filled' : 'text-muted-foreground'}`}>
+                                ★
+                              </span>
+                            ))}
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">
+                            {product.rating} ({product.reviews})
+                          </span>
                         </div>
-                        <span className="text-[10px] text-muted-foreground">
-                          {product.rating} ({product.reviews})
-                        </span>
-                      </div>
+                      )}
 
                       {/* Price + always-visible Add to Cart */}
                       <div className="flex items-center justify-between gap-2 pt-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-display text-xl font-bold text-primary">${product.price}</span>
+                          <span className="font-display text-xl font-bold text-primary">₹{product.price}</span>
                           {product.originalPrice && (
-                            <span className="text-sm text-muted-foreground line-through">${product.originalPrice}</span>
+                            <span className="text-sm text-muted-foreground line-through">₹{product.originalPrice}</span>
                           )}
                         </div>
                         {product.inStock ? (
