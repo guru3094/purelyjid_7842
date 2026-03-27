@@ -1934,12 +1934,12 @@ export default function AdminPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Price (paise) *</label>
-                          <input type="number" min="0" value={(productForm as any).price || 0} onChange={(e) => setProductForm((p) => ({ ...p, price: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                          <input type="text" inputMode="numeric" value={(productForm as any).price || 0} onChange={(e) => { const val = e.target.value.replace(/[^0-9]/g, ''); setProductForm((p) => ({ ...p, price: val === '' ? 0 : Number(val) })); }} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
                           <p className="text-[10px] text-muted-foreground mt-1">₹{(((productForm as any).price || 0) / 100).toFixed(2)}</p>
                         </div>
                         <div>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Original Price (paise)</label>
-                          <input type="number" min="0" value={(productForm as any).original_price || ''} onChange={(e) => setProductForm((p) => ({ ...p, original_price: e.target.value ? Number(e.target.value) : null }))} placeholder="Leave blank if no discount" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                          <input type="text" inputMode="numeric" value={(productForm as any).original_price || ''} onChange={(e) => { const val = e.target.value.replace(/[^0-9]/g, ''); setProductForm((p) => ({ ...p, original_price: val === '' ? null : Number(val) })); }} placeholder="Leave blank if no discount" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
                         </div>
                       </div>
 
@@ -3300,7 +3300,7 @@ export default function AdminPage() {
                         </div>
                         <div>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Price (paise)</label>
-                          <input type="number" min="0" value={workshopForm.price} onChange={(e) => setWorkshopForm((p) => ({ ...p, price: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                          <input type="text" inputMode="numeric" value={workshopForm.price} onChange={(e) => { const val = e.target.value.replace(/[^0-9]/g, ''); setWorkshopForm((p) => ({ ...p, price: val === '' ? 0 : Number(val) })); }} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                         </div>
                       </div>
                       <div>
