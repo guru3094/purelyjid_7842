@@ -631,7 +631,7 @@ export default function AdminPage() {
         short_description: row['short_description'] || '',
         price,
         original_price: row['original_price'] ? Math.round(parseFloat(row['original_price']) * 100) : null,
-        category_id: null,
+        category_id: row['category_slug'] ? (categories.find((c) => c.slug === row['category_slug'].trim())?.id ?? null) : null,
         material: row['material'] || '',
         badge: row['badge'] || null,
         badge_color: row['badge_color'] || 'bg-primary',
@@ -687,8 +687,9 @@ export default function AdminPage() {
   };
 
   const downloadCsvTemplate = () => {
-    const headers = 'name,slug,description,short_description,price,original_price,material,badge,badge_color,image_url,alt_text,sku,weight,dimensions,care_instructions,tags,in_stock,is_active,is_featured,display_order,stock_quantity,low_stock_threshold';
-    const example = 'Aurora Pendant,aurora-pendant,"Beautiful handcrafted resin pendant with aurora swirls","Handcrafted aurora resin pendant",3800,4800,Resin + Crystal,Bestseller,bg-primary,https://example.com/img.jpg,"Aurora pendant on white background",ARP-001,15g,"3 x 3 x 0.5 cm","Avoid sunlight. Clean with soft cloth.","pendant,jewelry,resin",true,true,false,1,50,5';
+    const headers = 'name,slug,description,short_description,price,original_price,category_slug,material,badge,badge_color,image_url,alt_text,sku,weight,dimensions,care_instructions,tags,in_stock,is_active,is_featured,display_order,stock_quantity,low_stock_threshold';
+    const categoryExample = categories.length > 0 ? categories[0].slug : 'jewelry';
+    const example = `Aurora Pendant,aurora-pendant,"Beautiful handcrafted resin pendant with aurora swirls","Handcrafted aurora resin pendant",3800,4800,${categoryExample},Resin + Crystal,Bestseller,bg-primary,https://example.com/img.jpg,"Aurora pendant on white background",ARP-001,15g,"3 x 3 x 0.5 cm","Avoid sunlight. Clean with soft cloth.","pendant|jewelry|resin",true,true,false,1,50,5`;
     const blob = new Blob([headers + '\n' + example], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = 'products_template.csv'; a.click();
@@ -1901,6 +1902,20 @@ export default function AdminPage() {
                       <div>
                         <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Full Description</label>
                         <textarea value={(productForm as any).description || ''} onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))} rows={4} placeholder="Detailed product description..." className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none" />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Category</label>
+                        <select
+                          value={(productForm as any).category_id || ''}
+                          onChange={(e) => setProductForm((p) => ({ ...p, category_id: e.target.value || null }))}
+                          className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                        >
+                          <option value="">— No Category —</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
                       </div>
 
                       <div>
