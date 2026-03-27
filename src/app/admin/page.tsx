@@ -367,6 +367,62 @@ export default function AdminPage() {
   const vyaaparInputRef = useRef<HTMLInputElement>(null);
   const [exportingCsv, setExportingCsv] = useState(false);
 
+  // Bulk Product Selection
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+
+  const toggleSelectProduct = (id: string) => {
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllProducts = () => {
+    if (selectedProductIds.size === products.length && products.length > 0) {
+      setSelectedProductIds(new Set());
+    } else {
+      setSelectedProductIds(new Set(products.map((p) => p.id)));
+    }
+  };
+
+  const bulkSetActive = async (isActive: boolean) => {
+    if (selectedProductIds.size === 0) return;
+    setBulkActionLoading(true);
+    try {
+      const supabase = createClient();
+      const ids = Array.from(selectedProductIds);
+      const { error } = await supabase.from('products').update({ is_active: isActive }).in('id', ids);
+      if (error) throw error;
+      setProducts((prev) => prev.map((p) => selectedProductIds.has(p.id) ? { ...p, is_active: isActive } : p));
+      setSelectedProductIds(new Set());
+    } catch (err) {
+      console.error('Bulk update error:', err);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const bulkDeleteProducts = async () => {
+    if (selectedProductIds.size === 0) return;
+    if (!confirm(`Delete ${selectedProductIds.size} product(s)? This cannot be undone.`)) return;
+    setBulkActionLoading(true);
+    try {
+      const supabase = createClient();
+      const ids = Array.from(selectedProductIds);
+      const { error } = await supabase.from('products').delete().in('id', ids);
+      if (error) throw error;
+      setProducts((prev) => prev.filter((p) => !selectedProductIds.has(p.id)));
+      setSelectedProductIds(new Set());
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
   // Workshop Catalogues
   const [workshopCatalogues, setWorkshopCatalogues] = useState<WorkshopCatalogue[]>([]);
   const [showCatalogueModal, setShowCatalogueModal] = useState(false);
