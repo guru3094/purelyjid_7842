@@ -1769,6 +1769,46 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Bulk Action Bar */}
+              {selectedProductIds.size > 0 && (
+                <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-2xl">
+                  <span className="text-xs font-semibold text-amber-800 flex-1">
+                    {selectedProductIds.size} product{selectedProductIds.size > 1 ? 's' : ''} selected
+                  </span>
+                  <button
+                    onClick={() => bulkSetActive(true)}
+                    disabled={bulkActionLoading}
+                    className="h-8 px-4 rounded-full bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <Icon name="EyeIcon" size={12} />
+                    Set Active
+                  </button>
+                  <button
+                    onClick={() => bulkSetActive(false)}
+                    disabled={bulkActionLoading}
+                    className="h-8 px-4 rounded-full bg-gray-500 text-white text-xs font-semibold hover:bg-gray-600 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <Icon name="EyeSlashIcon" size={12} />
+                    Set Hidden
+                  </button>
+                  <button
+                    onClick={bulkDeleteProducts}
+                    disabled={bulkActionLoading}
+                    className="h-8 px-4 rounded-full bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <Icon name="TrashIcon" size={12} />
+                    Delete Selected
+                  </button>
+                  <button
+                    onClick={() => setSelectedProductIds(new Set())}
+                    className="h-8 w-8 rounded-full border border-amber-300 flex items-center justify-center text-amber-700 hover:bg-amber-100 transition-colors"
+                  >
+                    <Icon name="XMarkIcon" size={12} />
+                  </button>
+                </div>
+              )}
+
               {/* CSV Upload */}
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
                 <h3 className="font-semibold text-foreground mb-2 text-sm">Bulk Upload via CSV</h3>
@@ -1790,6 +1830,20 @@ export default function AdminPage() {
               </div>
               {/* Products List */}
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                {/* Select All header row */}
+                {products.length > 0 && (
+                  <div className="flex items-center gap-4 px-6 py-3 border-b border-[rgba(196,120,90,0.08)] bg-[#FAF6F0]/60">
+                    <input
+                      type="checkbox"
+                      checked={selectedProductIds.size === products.length && products.length > 0}
+                      onChange={toggleSelectAllProducts}
+                      className="w-4 h-4 rounded accent-primary cursor-pointer"
+                    />
+                    <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground">
+                      {selectedProductIds.size === products.length && products.length > 0 ? 'Deselect All' : 'Select All'}
+                    </span>
+                  </div>
+                )}
                 <div className="divide-y divide-[rgba(196,120,90,0.06)]">
                   {products.length === 0 ? (
                     <div className="px-6 py-12 text-center">
@@ -1797,7 +1851,13 @@ export default function AdminPage() {
                       <p className="text-sm font-semibold text-foreground">No products yet</p>
                     </div>
                   ) : products.map((product) => (
-                    <div key={product.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAF6F0]/50 transition-colors">
+                    <div key={product.id} className={`flex items-center gap-4 px-6 py-4 hover:bg-[#FAF6F0]/50 transition-colors ${selectedProductIds.has(product.id) ? 'bg-amber-50/60' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={selectedProductIds.has(product.id)}
+                        onChange={() => toggleSelectProduct(product.id)}
+                        className="w-4 h-4 rounded accent-primary cursor-pointer shrink-0"
+                      />
                       <div className="w-12 h-12 rounded-xl bg-[#EDE8E0] overflow-hidden shrink-0">
                         {product.image_url ? <img src={product.image_url} alt={product.alt_text} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Icon name="PhotoIcon" size={20} className="text-muted-foreground" /></div>}
                       </div>
