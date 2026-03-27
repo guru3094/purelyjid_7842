@@ -404,7 +404,7 @@ export default function AdminPage() {
   const [pincodes, setPincodes] = useState<DeliveryPincode[]>([]);
   const [showPincodeModal, setShowPincodeModal] = useState(false);
   const [editingPincode, setEditingPincode] = useState<DeliveryPincode | null>(null);
-  const [pincodeForm, setPincodeForm] = useState({ pincode: '', area_name: '', city: '', state: '', is_active: true, delivery_days: 3, extra_charge: 0 });
+  const [pincodeForm, setPincodeForm] = useState({ pincode: '', area_name: '', city: '', state: '', is_active: true, delivery_days: 3, extra_charge: 0, free_shipping_above: 0 });
   const [savingPincode, setSavingPincode] = useState(false);
   const [deletingPincode, setDeletingPincode] = useState<string | null>(null);
   const [pincodeSearch, setPincodeSearch] = useState('');
@@ -1198,13 +1198,13 @@ export default function AdminPage() {
 
   const openAddPincode = () => {
     setEditingPincode(null);
-    setPincodeForm({ pincode: '', area_name: '', city: '', state: '', is_active: true, delivery_days: 3, extra_charge: 0 });
+    setPincodeForm({ pincode: '', area_name: '', city: '', state: '', is_active: true, delivery_days: 3, extra_charge: 0, free_shipping_above: 0 });
     setShowPincodeModal(true);
   };
 
   const openEditPincode = (p: DeliveryPincode) => {
     setEditingPincode(p);
-    setPincodeForm({ pincode: p.pincode, area_name: p.area_name, city: p.city, state: p.state, is_active: p.is_active, delivery_days: p.delivery_days, extra_charge: p.extra_charge });
+    setPincodeForm({ pincode: p.pincode, area_name: p.area_name, city: p.city, state: p.state, is_active: p.is_active, delivery_days: p.delivery_days, extra_charge: p.extra_charge, free_shipping_above: p.free_shipping_above ?? 0 });
     setShowPincodeModal(true);
   };
 
@@ -2927,16 +2927,21 @@ export default function AdminPage() {
                           try {
                             const supabase = createClient();
                             if (editingCourier) {
-                              await supabase.from('courier_partners').update({ ...courierForm, updated_at: new Date().toISOString() }).eq('id', editingCourier.id);
+                              const { error } = await supabase.from('courier_partners').update({ ...courierForm, updated_at: new Date().toISOString() }).eq('id', editingCourier.id);
+                              if (error) throw error;
                               showToast('Courier updated.', 'success');
                             } else {
-                              await supabase.from('courier_partners').insert(courierForm);
+                              const { error } = await supabase.from('courier_partners').insert(courierForm);
+                              if (error) throw error;
                               showToast('Courier added.', 'success');
                             }
                             setShowCourierModal(false);
                             fetchData();
-                          } catch (err: any) { showToast(err?.message || 'Failed to save courier.', 'error'); }
-                          finally { setSavingCourier(false); }
+                          } catch (err: any) {
+                            showToast(err?.message || 'Failed to save courier.', 'error');
+                          } finally {
+                            setSavingCourier(false);
+                          }
                         }}
                         className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
                       >
@@ -3906,7 +3911,7 @@ export default function AdminPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Shipping Charge (₹)</label>
-                          <input type="number" min={0} value={zoneForm.shipping_charge / 100} onChange={(e) => setZoneForm((p) => ({ ...p, shipping_charge: Math.round(parseFloat(e.target.value || '0') * 100) }))} placeholder="0 = Free" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                          <input type="number" min={0} value={zoneForm.shipping_charge} onChange={(e) => setZoneForm((p) => ({ ...p, shipping_charge: Math.round(parseFloat(e.target.value || '0')) }))} placeholder="0 = Free" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                         </div>
                         <div>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Delivery Days</label>
@@ -3916,7 +3921,7 @@ export default function AdminPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Free Shipping Above (₹) — 0 = never</label>
-                          <input type="number" min={0} value={zoneForm.free_shipping_above / 100} onChange={(e) => setZoneForm((p) => ({ ...p, free_shipping_above: Math.round(parseFloat(e.target.value || '0') * 100) }))} placeholder="e.g. 1250" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                          <input type="number" min={0} value={zoneForm.free_shipping_above} onChange={(e) => setZoneForm((p) => ({ ...p, free_shipping_above: Math.round(parseFloat(e.target.value || '0')) }))} placeholder="e.g. 1250" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                         </div>
                         <div>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Priority (higher = checked first)</label>
