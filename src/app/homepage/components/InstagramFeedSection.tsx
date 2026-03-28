@@ -32,7 +32,7 @@ export default function InstagramFeedSection() {
             </p>
           </div>
           <a
-            href="https://www.instagram.com/purelyjid"
+            href="https://www.instagram.com/purely_jid/?hl=en"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-semibold uppercase tracking-[0.2em] hover:opacity-90 transition-opacity shrink-0"
@@ -49,7 +49,7 @@ export default function InstagramFeedSection() {
           {INSTAGRAM_PLACEHOLDERS?.map((item, index) => (
             <a
               key={index}
-              href="https://www.instagram.com/purelyjid"
+              href="https://www.instagram.com/purely_jid/?hl=en"
               target="_blank"
               rel="noopener noreferrer"
               className="relative aspect-square bg-gradient-to-br from-[#FAF6F0] to-[#EDE8E0] rounded-2xl overflow-hidden border border-[rgba(196,120,90,0.12)] group hover:border-[rgba(196,120,90,0.3)] transition-all duration-300"
@@ -75,7 +75,7 @@ export default function InstagramFeedSection() {
             Tag us in your photos with <span className="font-semibold text-foreground">#PurelyJid</span> to be featured
           </p>
           <a
-            href="https://www.instagram.com/purelyjid"
+            href="https://www.instagram.com/purely_jid/?hl=en"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"

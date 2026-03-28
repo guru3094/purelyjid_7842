@@ -57,11 +57,15 @@ export default function CraftStorySection() {
     const fetchStory = async () => {
       try {
         const supabase = createClient();
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('story_content')
           .select('*')
-          .eq('section_key', 'our_story')
+          .eq('section_key', 'craft_story')
           .single();
+        if (error && !data) {
+          // True network failure — keep defaults
+          return;
+        }
         if (data) {
           setStory({
             title: data.title || DEFAULT_STORY.title,
@@ -78,7 +82,33 @@ export default function CraftStorySection() {
         // Use defaults on error
       }
     };
+
     fetchStory();
+
+    // Real-time subscription for craft_story content
+    const supabase = createClient();
+    const channel = supabase
+      .channel('craft-story-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'story_content', filter: 'section_key=eq.craft_story' }, (payload) => {
+        const d = payload.new as any;
+        if (d) {
+          setStory({
+            title: d.title || DEFAULT_STORY.title,
+            subtitle: d.subtitle || DEFAULT_STORY.subtitle,
+            body: d.body || DEFAULT_STORY.body,
+            image_url: d.image_url || DEFAULT_STORY.image_url,
+            image_alt: d.image_alt || DEFAULT_STORY.image_alt,
+            quote: d.quote || DEFAULT_STORY.quote,
+            quote_author: d.quote_author || DEFAULT_STORY.quote_author,
+            extra_data: d.extra_data || DEFAULT_STORY.extra_data,
+          });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {

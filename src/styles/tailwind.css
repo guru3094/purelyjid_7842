@@ -5,16 +5,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --bg-cream: #FAF6F0;
-  --bg-warm: #F2EBE1;
-  --bg-dark: #2A1F1A;
-  --accent-sienna: #C4785A;
-  --accent-mauve: #8B6E7F;
-  --accent-gold: #D4A853;
-  --text-espresso: #2A1F1A;
-  --text-warm-gray: #7A6E68;
+  --bg-cream: #F5F0E8;
+  --bg-warm: #EAF0E6;
+  --bg-dark: #2C2416;
+  --accent-sienna: #4A6741;
+  --accent-mauve: #8B7355;
+  --accent-gold: #C8A84B;
+  --text-espresso: #2C2416;
+  --text-warm-gray: #7A7060;
   --text-light: #B5A89F;
-  --border-warm: rgba(196, 120, 90, 0.15);
+  --border-warm: rgba(74, 103, 65, 0.15);
 }
 
 html {
@@ -78,7 +78,7 @@ body {
 }
 .hover-lift:hover {
   transform: translateY(-10px);
-  box-shadow: 0 30px 60px -15px rgba(42, 31, 26, 0.15);
+  box-shadow: 0 30px 60px -15px rgba(30, 20, 16, 0.15);
 }
 
 /* ─── Bento item stagger ─── */
@@ -109,7 +109,7 @@ body {
   transform: translate(-50%, -50%);
   width: 140%;
   height: 140%;
-  background: radial-gradient(circle at center, rgba(196, 120, 90, 0.2) 0%, transparent 70%);
+  background: radial-gradient(circle at center, rgba(184, 92, 56, 0.2) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -174,10 +174,10 @@ body {
 
 /* ─── Glass morphism ─── */
 .glass-card {
-  background: rgba(250, 246, 240, 0.85);
+  background: rgba(251, 247, 242, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(196, 120, 90, 0.12);
+  border: 1px solid rgba(184, 92, 56, 0.12);
 }
 
 /* ─── Range input ─── */

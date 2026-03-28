@@ -4,7 +4,6 @@ import Icon from '@/components/ui/AppIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { createClient } from '@/lib/supabase/client';
-import Link from 'next/link';
 
 interface Review {
   id: string;
@@ -202,15 +201,7 @@ export default function ProductReviews({ productId, productName }: ProductReview
                 </button>
               </div>
             ) : null
-          ) : (
-            <Link
-              href={`/login?redirect=/products`}
-              className="h-10 px-6 rounded-full border border-[rgba(196,120,90,0.3)] text-foreground text-xs font-semibold uppercase tracking-[0.15em] hover:border-primary hover:text-primary transition-colors flex items-center gap-2"
-            >
-              <Icon name="UserIcon" size={13} />
-              Sign in to Review
-            </Link>
-          )}
+          ) : null}
         </div>
 
         {/* Rating Distribution (shown when there are reviews) */}

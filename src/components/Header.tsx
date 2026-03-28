@@ -211,12 +211,7 @@ export default function Header() {
                 )}
               </div>
             ) : (
-              <Link
-                href="/login"
-                className="hidden sm:inline-flex items-center gap-2 h-9 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.2em] hover:bg-primary transition-colors duration-300"
-              >
-                Sign In
-              </Link>
+              null
             )
           )}
 
@@ -291,13 +286,6 @@ export default function Header() {
                   onClick={() => setMenuOpen(false)}
                 >
                   Sign In
-                </Link>
-                <Link
-                  href="/register"
-                  className="block text-sm font-semibold uppercase tracking-[0.25em] text-muted-foreground hover:text-primary transition-colors"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  Register
                 </Link>
               </>
             )}

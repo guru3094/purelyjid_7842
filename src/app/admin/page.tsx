@@ -7,7 +7,6 @@ import Header from '@/components/Header';
 import Icon from '@/components/ui/AppIcon';
 
 import { AdminStatSkeleton } from '@/components/ui/Skeleton';
-import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { createClient } from '@/lib/supabase/client';
 
@@ -54,6 +53,7 @@ interface Product {
   name: string;
   slug: string;
   description: string;
+  short_description?: string;
   price: number;
   original_price: number | null;
   category_id: string | null;
@@ -62,6 +62,14 @@ interface Product {
   badge_color: string;
   image_url: string | null;
   alt_text: string;
+  additional_images?: { url: string; alt: string }[];
+  specifications?: { label: string; value: string }[];
+  care_instructions?: string;
+  tags?: string[];
+  sku?: string;
+  weight?: string;
+  dimensions?: string;
+  is_featured?: boolean;
   in_stock: boolean;
   is_active: boolean;
   display_order: number;
@@ -91,12 +99,10 @@ interface Coupon {
   discount_type: 'percentage' | 'fixed';
   discount_value: number;
   min_order_amount: number | null;
-  max_discount_amount: number | null;
-  usage_limit: number | null;
-  valid_from: string;
-  valid_until: string | null;
-  is_active: boolean;
+  max_uses: number | null;
+  used_count: number;
   expires_at: string | null;
+  is_active: boolean;
   created_at: string;
 }
 
@@ -212,9 +218,27 @@ interface DeliveryPincode {
   is_active: boolean;
   delivery_days: number;
   extra_charge: number;
+  free_shipping_above?: number;
 }
 
-type Tab = 'overview' | 'analytics' | 'orders' | 'products' | 'inventory' | 'coupons' | 'categories' | 'themes' | 'couriers' | 'story' | 'users' | 'google-reviews' | 'invoices' | 'vyaapar' | 'shop' | 'collections' | 'workshops-admin' | 'custom-products-admin' | 'pincodes' | 'brand-templates';
+interface ShippingZone {
+  id: string;
+  zone_name: string;
+  zone_type: 'city' | 'area' | 'distance' | 'state';
+  city: string;
+  state: string;
+  area_keywords: string;
+  min_distance_km: number;
+  max_distance_km: number;
+  shipping_charge: number;
+  free_shipping_above: number;
+  delivery_days: number;
+  is_active: boolean;
+  priority: number;
+  created_at: string;
+}
+
+type Tab = 'overview' | 'analytics' | 'orders' | 'products' | 'inventory' | 'coupons' | 'categories' | 'themes' | 'couriers' | 'story' | 'users' | 'google-reviews' | 'invoices' | 'vyaapar' | 'shop' | 'collections' | 'workshops-admin' | 'custom-products-admin' | 'pincodes' | 'brand-templates' | 'shipping-policy' | 'privacy-policy' | 'terms-conditions' | 'shipping-charges';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -228,7 +252,7 @@ const STATUS_COLORS: Record<string, string> = {
   refunded: 'bg-gray-50 text-gray-700 border-gray-200',
 };
 
-const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
+const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
 
 const DEFAULT_STORY: StoryContent = {
   section_key: 'craft_story',
@@ -244,19 +268,30 @@ const DEFAULT_STORY: StoryContent = {
 
 const EMPTY_PRODUCT = {
   name: '',
+  slug: '',
   description: '',
+  short_description: '',
   price: 0,
-  sale_price: null as number | null,
+  original_price: null as number | null,
   stock_quantity: 0,
+  low_stock_threshold: 5,
   sku: '',
-  images: [] as { url: string; alt: string }[],
-  is_active: true,
-  is_featured: false,
-  weight: null as number | null,
-  dimensions: null as string | null,
-  category_ids: [] as string[],
-  theme_id: null as string | null,
+  weight: '',
+  dimensions: '',
+  material: '',
+  badge: null as string | null,
+  badge_color: 'bg-primary',
+  image_url: null as string | null,
+  alt_text: '',
+  additional_images: [] as { url: string; alt: string }[],
+  specifications: [] as { label: string; value: string }[],
+  care_instructions: '',
   tags: [] as string[],
+  is_featured: false,
+  is_active: true,
+  in_stock: true,
+  display_order: 0,
+  category_id: null as string | null,
 };
 
 const EMPTY_COUPON = {
@@ -264,11 +299,10 @@ const EMPTY_COUPON = {
   discount_type: 'percentage\' as \'percentage\' | \'fixed',
   discount_value: 0,
   min_order_amount: null as number | null,
-  max_discount_amount: null as number | null,
-  usage_limit: null as number | null,
-  valid_from: '',
-  valid_until: null as string | null,
+  max_uses: null as number | null,
+  expires_at: null as string | null,
   is_active: true,
+  description: '',
 };
 
 const EMPTY_COURIER = {
@@ -282,7 +316,6 @@ const EMPTY_COURIER = {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function AdminPage() {
-  const { user, loading: authLoading } = useAuth();
   const { showToast } = useToast();
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -341,6 +374,9 @@ export default function AdminPage() {
   const [catalogueForm, setCatalogueForm] = useState({ title: '', description: '', file_url: '', file_name: '', file_size: 0, thumbnail_url: '', is_active: true });
   const [savingCatalogue, setSavingCatalogue] = useState(false);
   const [deletingCatalogue, setDeletingCatalogue] = useState<string | null>(null);
+  const [catalogueThumbnailFile, setCatalogueThumbnailFile] = useState<File | null>(null);
+  const [catalogueThumbnailPreview, setCatalogueThumbnailPreview] = useState<string>('');
+  const catalogueThumbnailInputRef = useRef<HTMLInputElement>(null);
 
   // Workshops
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
@@ -360,17 +396,30 @@ export default function AdminPage() {
   const [customProductForm, setCustomProductForm] = useState({ name: '', description: '', category: 'Preserved Florals', price_range: '', images: '[]', catalogue_url: '', is_active: true, display_order: 0 });
   const [savingCustomProduct, setSavingCustomProduct] = useState(false);
   const [deletingCustomProduct, setDeletingCustomProduct] = useState<string | null>(null);
+  const [customProductImageFile, setCustomProductImageFile] = useState<File | null>(null);
+  const [customProductImagePreview, setCustomProductImagePreview] = useState<string>('');
+  const customProductImageInputRef = useRef<HTMLInputElement>(null);
 
   // Delivery Pincodes
   const [pincodes, setPincodes] = useState<DeliveryPincode[]>([]);
   const [showPincodeModal, setShowPincodeModal] = useState(false);
   const [editingPincode, setEditingPincode] = useState<DeliveryPincode | null>(null);
-  const [pincodeForm, setPincodeForm] = useState({ pincode: '', area_name: '', city: '', state: '', is_active: true, delivery_days: 3, extra_charge: 0 });
+  const [pincodeForm, setPincodeForm] = useState({ pincode: '', area_name: '', city: '', state: '', is_active: true, delivery_days: 3, extra_charge: 0, free_shipping_above: 0 });
   const [savingPincode, setSavingPincode] = useState(false);
   const [deletingPincode, setDeletingPincode] = useState<string | null>(null);
   const [pincodeSearch, setPincodeSearch] = useState('');
   const [bulkPincodes, setBulkPincodes] = useState('');
   const [importingPincodes, setImportingPincodes] = useState(false);
+
+  // Shipping Zones
+  const [shippingZones, setShippingZones] = useState<ShippingZone[]>([]);
+  const [showZoneModal, setShowZoneModal] = useState(false);
+  const [editingZone, setEditingZone] = useState<ShippingZone | null>(null);
+  const [zoneForm, setZoneForm] = useState({ zone_name: '', zone_type: 'city' as ShippingZone['zone_type'], city: '', state: '', area_keywords: '', min_distance_km: 0, max_distance_km: 9999, shipping_charge: 0, free_shipping_above: 0, delivery_days: 5, is_active: true, priority: 0 });
+  const [savingZone, setSavingZone] = useState(false);
+  const [deletingZone, setDeletingZone] = useState<string | null>(null);
+  const [zoneSearch, setZoneSearch] = useState('');
+  const [shippingTab, setShippingTab] = useState<'pincodes' | 'zones'>('pincodes');
 
   // Product modal
   const [showProductModal, setShowProductModal] = useState(false);
@@ -378,6 +427,9 @@ export default function AdminPage() {
   const [productForm, setProductForm] = useState<Omit<Product, 'id' | 'categories'>>(EMPTY_PRODUCT);
   const [savingProduct, setSavingProduct] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState<string | null>(null);
+  const [productImageFile, setProductImageFile] = useState<File | null>(null);
+  const [productImagePreview, setProductImagePreview] = useState<string>('');
+  const productImageInputRef = useRef<HTMLInputElement>(null);
 
   // Category modal
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -403,6 +455,15 @@ export default function AdminPage() {
   const [storyForm, setStoryForm] = useState<StoryContent>(DEFAULT_STORY);
   const [savingStory, setSavingStory] = useState(false);
   const [editingStory, setEditingStory] = useState(false);
+  const [showStoryModal, setShowStoryModal] = useState(false);
+
+  // Policy Pages
+  const [shippingContent, setShippingContent] = useState('');
+  const [privacyContent, setPrivacyContent] = useState('');
+  const [termsContent, setTermsContent] = useState('');
+  const [savingShipping, setSavingShipping] = useState(false);
+  const [savingPrivacy, setSavingPrivacy] = useState(false);
+  const [savingTerms, setSavingTerms] = useState(false);
 
   // Inventory
   const [updatingStock, setUpdatingStock] = useState<string | null>(null);
@@ -434,7 +495,7 @@ export default function AdminPage() {
   };
 
   const getOrderWhatsAppLink = (order: Order) => {
-    const phone = '919999999999';
+    const phone = '919518770073';
     const msg = encodeURIComponent(`Hi! I have a query about my order #${order.order_number}. Total: ₹${(order.total / 100).toLocaleString('en-IN')}`);
     return `https://wa.me/${phone}?text=${msg}`;
   };
@@ -446,7 +507,7 @@ export default function AdminPage() {
     setFetchError('');
     try {
       const supabase = createClient();
-      const [ordersRes, usersRes, productsRes, categoriesRes, themesRes, couponsRes, couriersRes, storyRes, workshopRes, customRes, enquiriesRes, pincodesRes] = await Promise.all([
+      const [ordersRes, usersRes, productsRes, categoriesRes, themesRes, couponsRes, couriersRes, storyRes, workshopRes, customRes, enquiriesRes, pincodesRes, zonesRes] = await Promise.all([
         supabase.from('orders').select('*, user_profiles(full_name, email)').order('created_at', { ascending: false }),
         supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
         supabase.from('products').select('*, categories(name)').order('display_order', { ascending: true }),
@@ -459,6 +520,7 @@ export default function AdminPage() {
         supabase.from('custom_products').select('*').order('display_order', { ascending: true }),
         supabase.from('custom_enquiries').select('*').order('created_at', { ascending: false }),
         supabase.from('delivery_pincodes').select('*').order('pincode', { ascending: true }),
+        supabase.from('shipping_zones').select('*').order('priority', { ascending: false }),
       ]);
       if (ordersRes.data) setOrders(ordersRes.data);
       if (usersRes.data) setUsers(usersRes.data);
@@ -472,6 +534,18 @@ export default function AdminPage() {
       if (customRes.data) setCustomProducts(customRes.data);
       if (enquiriesRes.data) setCustomEnquiries(enquiriesRes.data);
       if (pincodesRes.data) setPincodes(pincodesRes.data);
+      if (zonesRes.data) setShippingZones(zonesRes.data);
+
+      // Fetch policy pages content
+      const [shippingRes, privacyRes, termsRes] = await Promise.all([
+        supabase.from('story_content').select('body').eq('section_key', 'shipping_policy').single(),
+        supabase.from('story_content').select('body').eq('section_key', 'privacy_policy').single(),
+        supabase.from('story_content').select('body').eq('section_key', 'terms_conditions').single(),
+      ]);
+      if (shippingRes.data?.body) setShippingContent(shippingRes.data.body);
+      if (privacyRes.data?.body) setPrivacyContent(privacyRes.data.body);
+      if (termsRes.data?.body) setTermsContent(termsRes.data.body);
+
       // Fetch workshops
       const supabase2 = createClient();
       const workshopsRes = await supabase2.from('workshops').select('*').order('created_at', { ascending: false });
@@ -484,20 +558,33 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    if (!authLoading) {
-      if (!user) { router.push('/login'); return; }
-      const checkAdmin = async () => {
-        try {
-          const supabase = createClient();
-          const { data } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
-          if (data?.role === 'admin') { setIsAdmin(true); fetchData(); }
-          else router.push('/');
-        } catch { router.push('/'); }
-        finally { setCheckingRole(false); }
-      };
-      checkAdmin();
+    const checkAdminSession = async () => {
+      try {
+        // Check admin_session cookie via a lightweight API call
+        const res = await fetch('/api/admin-auth/check', { method: 'GET' });
+        if (res.ok) {
+          setIsAdmin(true);
+          fetchData();
+        } else {
+          router.push('/admin-panel/login');
+        }
+      } catch {
+        router.push('/admin-panel/login');
+      } finally {
+        setCheckingRole(false);
+      }
+    };
+    checkAdminSession();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/admin-auth/logout', { method: 'POST' });
+    } catch {
+      // ignore errors
     }
-  }, [user, authLoading]);
+    router.push('/admin-panel/login');
+  };
 
   // ─── Bulk CSV Upload ─────────────────────────────────────────────────────────
 
@@ -514,33 +601,67 @@ export default function AdminPage() {
 
     lines.slice(1).forEach((line, i) => {
       if (!line.trim()) return;
-      const vals = line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
+      // Handle quoted fields with commas inside
+      const vals: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let ci = 0; ci < line.length; ci++) {
+        const ch = line[ci];
+        if (ch === '"') { inQuotes = !inQuotes; }
+        else if (ch === ',' && !inQuotes) { vals.push(current.trim()); current = ''; }
+        else { current += ch; }
+      }
+      vals.push(current.trim());
+
       const row: Record<string, string> = {};
-      headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });
+      headers.forEach((h, idx) => { row[h] = (vals[idx] || '').replace(/^"|"$/g, ''); });
 
       const price = Math.round(parseFloat(row['price'] || '0') * 100);
       if (isNaN(price) || price <= 0) { errors.push(`Row ${i + 2}: Invalid price "${row['price']}"`); return; }
       if (!row['name']?.trim()) { errors.push(`Row ${i + 2}: Name is required`); return; }
 
-      const slug = (row['slug'] || row['name']).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      let slug = (row['slug'] || row['name']).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const tagsRaw = row['tags'] || '';
+      const tags = tagsRaw ? tagsRaw.split('|').map((t: string) => t.trim()).filter(Boolean) : [];
+
       products.push({
         name: row['name'],
         slug,
         description: row['description'] || '',
+        short_description: row['short_description'] || '',
         price,
         original_price: row['original_price'] ? Math.round(parseFloat(row['original_price']) * 100) : null,
-        category_id: null,
+        category_id: row['category_slug'] ? (categories.find((c) => c.slug === row['category_slug'].trim())?.id ?? null) : null,
         material: row['material'] || '',
         badge: row['badge'] || null,
         badge_color: row['badge_color'] || 'bg-primary',
         image_url: row['image_url'] || '',
         alt_text: row['alt_text'] || row['name'],
+        sku: row['sku'] || '',
+        weight: row['weight'] || '',
+        dimensions: row['dimensions'] || '',
+        care_instructions: row['care_instructions'] || '',
+        tags,
+        additional_images: [],
+        specifications: [],
+        is_featured: (row['is_featured'] || 'false').toLowerCase() === 'true',
         in_stock: (row['in_stock'] || 'true').toLowerCase() !== 'false',
         is_active: (row['is_active'] || 'true').toLowerCase() !== 'false',
         display_order: parseInt(row['display_order'] || '0', 10) || 0,
         stock_quantity: parseInt(row['stock_quantity'] || '0', 10) || 0,
         low_stock_threshold: parseInt(row['low_stock_threshold'] || '5', 10) || 5,
       });
+    });
+
+    // Deduplicate slugs within the CSV batch by appending index suffix
+    const slugCount: Record<string, number> = {};
+    products.forEach((p) => {
+      if (slugCount[p.slug] === undefined) {
+        slugCount[p.slug] = 0;
+      } else {
+        slugCount[p.slug]++;
+        p.slug = `${p.slug}-${slugCount[p.slug]}`;
+      }
     });
 
     setCsvErrors(errors);
@@ -563,7 +684,22 @@ export default function AdminPage() {
     setUploadingCsv(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase.from('products').insert(csvPreview.map((p) => ({ ...p, updated_at: new Date().toISOString() })));
+      // Fetch existing slugs to avoid conflicts with DB
+      const { data: existingSlugs } = await supabase.from('products').select('slug');
+      const existingSlugSet = new Set((existingSlugs || []).map((r: { slug: string }) => r.slug));
+
+      // Make each product slug unique against existing DB slugs
+      const productsToInsert = csvPreview.map((p) => {
+        let slug = p.slug;
+        if (existingSlugSet.has(slug)) {
+          const suffix = Date.now().toString(36);
+          slug = `${slug}-${suffix}`;
+        }
+        existingSlugSet.add(slug); // track within batch too
+        return { ...p, slug, updated_at: new Date().toISOString() };
+      });
+
+      const { error } = await supabase.from('products').insert(productsToInsert);
       if (error) throw error;
       showToast(`${csvPreview.length} products uploaded successfully!`, 'success');
       setCsvFile(null);
@@ -577,8 +713,9 @@ export default function AdminPage() {
   };
 
   const downloadCsvTemplate = () => {
-    const headers = 'name,slug,description,price,original_price,material,badge,image_url,alt_text,in_stock,is_active,display_order,stock_quantity,low_stock_threshold';
-    const example = 'Aurora Pendant,aurora-pendant,Beautiful resin pendant,38.00,48.00,Resin + Crystal,Bestseller,https://example.com/img.jpg,Aurora pendant on white background,true,true,1,50,5';
+    const headers = 'name,slug,description,short_description,price,original_price,category_slug,material,badge,badge_color,image_url,alt_text,sku,weight,dimensions,care_instructions,tags,in_stock,is_active,is_featured,display_order,stock_quantity,low_stock_threshold';
+    const categoryExample = categories.length > 0 ? categories[0].slug : 'jewelry';
+    const example = `Aurora Pendant,aurora-pendant,"Beautiful handcrafted resin pendant with aurora swirls","Handcrafted aurora resin pendant",3800,4800,${categoryExample},Resin + Crystal,Bestseller,bg-primary,https://example.com/img.jpg,"Aurora pendant on white background",ARP-001,15g,"3 x 3 x 0.5 cm","Avoid sunlight. Clean with soft cloth.","pendant|jewelry|resin",true,true,false,1,50,5`;
     const blob = new Blob([headers + '\n' + example], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = 'products_template.csv'; a.click();
@@ -803,13 +940,30 @@ export default function AdminPage() {
   const openAddCatalogue = () => {
     setEditingCatalogue(null);
     setCatalogueForm({ title: '', description: '', file_url: '', file_name: '', file_size: 0, thumbnail_url: '', is_active: true });
+    setCatalogueThumbnailFile(null);
+    setCatalogueThumbnailPreview('');
     setShowCatalogueModal(true);
   };
 
   const openEditCatalogue = (cat: WorkshopCatalogue) => {
     setEditingCatalogue(cat);
     setCatalogueForm({ title: cat.title, description: cat.description, file_url: cat.file_url, file_name: cat.file_name, file_size: cat.file_size, thumbnail_url: cat.thumbnail_url || '', is_active: cat.is_active });
+    setCatalogueThumbnailFile(null);
+    setCatalogueThumbnailPreview(cat.thumbnail_url || '');
     setShowCatalogueModal(true);
+  };
+
+  const handleCatalogueThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCatalogueThumbnailFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setCatalogueThumbnailPreview(dataUrl);
+      setCatalogueForm((p) => ({ ...p, thumbnail_url: dataUrl }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const saveCatalogue = async () => {
@@ -966,7 +1120,7 @@ export default function AdminPage() {
     }
     setWorkshopCatalogueFile(file);
     // Pre-fill file name in catalogue form
-    setCatalogueForm((prev) => ({ ...prev, file_name: file.name, file_size: file.size }));
+    setCatalogueForm((p) => ({ ...p, file_name: file.name, file_size: file.size }));
   };
 
   // ── CUSTOM PRODUCT ACTIONS ───────────────────────────────────────────────
@@ -974,6 +1128,8 @@ export default function AdminPage() {
   const openAddCustomProduct = () => {
     setEditingCustomProduct(null);
     setCustomProductForm({ name: '', description: '', category: 'Preserved Florals', price_range: '', images: '[]', catalogue_url: '', is_active: true, display_order: 0 });
+    setCustomProductImageFile(null);
+    setCustomProductImagePreview('');
     setShowCustomProductModal(true);
   };
 
@@ -984,7 +1140,26 @@ export default function AdminPage() {
       price_range: p.price_range, images: JSON.stringify(p.images || []),
       catalogue_url: p.catalogue_url || '', is_active: p.is_active, display_order: p.display_order,
     });
+    setCustomProductImageFile(null);
+    const firstImage = p.images?.[0]?.url || '';
+    setCustomProductImagePreview(firstImage);
     setShowCustomProductModal(true);
+  };
+
+  const handleCustomProductImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCustomProductImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setCustomProductImagePreview(dataUrl);
+      // Inject as first image in the images JSON array
+      const currentImages = (() => { try { return JSON.parse(customProductForm.images || '[]'); } catch { return []; } })();
+      const newImages = [{ url: dataUrl, alt: customProductForm.name || 'Custom product image' }, ...currentImages.filter((_: any, i: number) => i > 0)];
+      setCustomProductForm((p) => ({ ...p, images: JSON.stringify(newImages) }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const saveCustomProduct = async () => {
@@ -1050,13 +1225,13 @@ export default function AdminPage() {
 
   const openAddPincode = () => {
     setEditingPincode(null);
-    setPincodeForm({ pincode: '', area_name: '', city: '', state: '', is_active: true, delivery_days: 3, extra_charge: 0 });
+    setPincodeForm({ pincode: '', area_name: '', city: '', state: '', is_active: true, delivery_days: 3, extra_charge: 0, free_shipping_above: 0 });
     setShowPincodeModal(true);
   };
 
   const openEditPincode = (p: DeliveryPincode) => {
     setEditingPincode(p);
-    setPincodeForm({ pincode: p.pincode, area_name: p.area_name, city: p.city, state: p.state, is_active: p.is_active, delivery_days: p.delivery_days, extra_charge: p.extra_charge });
+    setPincodeForm({ pincode: p.pincode, area_name: p.area_name, city: p.city, state: p.state, is_active: p.is_active, delivery_days: p.delivery_days, extra_charge: p.extra_charge, free_shipping_above: p.free_shipping_above ?? 0 });
     setShowPincodeModal(true);
   };
 
@@ -1081,7 +1256,9 @@ export default function AdminPage() {
       fetchData();
     } catch (err: any) {
       showToast(err?.message || 'Failed to save pincode.', 'error');
-    } finally { setSavingPincode(false); }
+    } finally {
+      setSavingPincode(false);
+    }
   };
 
   const deletePincode = async (id: string) => {
@@ -1094,7 +1271,9 @@ export default function AdminPage() {
       showToast('Pincode removed.', 'success');
     } catch (err: any) {
       showToast(err?.message || 'Failed to delete pincode.', 'error');
-    } finally { setDeletingPincode(null); }
+    } finally {
+      setDeletingPincode(null);
+    }
   };
 
   const togglePincodeActive = async (p: DeliveryPincode) => {
@@ -1128,17 +1307,97 @@ export default function AdminPage() {
     } finally { setImportingPincodes(false); }
   };
 
+  // ── Shipping Zone Actions ────────────────────────────────────────────────────
+
+  const openAddZone = () => {
+    setEditingZone(null);
+    setZoneForm({ zone_name: '', zone_type: 'city', city: '', state: '', area_keywords: '', min_distance_km: 0, max_distance_km: 9999, shipping_charge: 0, free_shipping_above: 0, delivery_days: 5, is_active: true, priority: 0 });
+    setShowZoneModal(true);
+  };
+
+  const openEditZone = (z: ShippingZone) => {
+    setEditingZone(z);
+    setZoneForm({ zone_name: z.zone_name, zone_type: z.zone_type, city: z.city, state: z.state, area_keywords: z.area_keywords, min_distance_km: z.min_distance_km, max_distance_km: z.max_distance_km, shipping_charge: z.shipping_charge, free_shipping_above: z.free_shipping_above, delivery_days: z.delivery_days, is_active: z.is_active, priority: z.priority });
+    setShowZoneModal(true);
+  };
+
+  const saveZone = async () => {
+    if (!zoneForm.zone_name.trim()) { showToast('Zone name is required.', 'error'); return; }
+    setSavingZone(true);
+    try {
+      const supabase = createClient();
+      const payload = { ...zoneForm, shipping_charge: Number(zoneForm.shipping_charge), free_shipping_above: Number(zoneForm.free_shipping_above), delivery_days: Number(zoneForm.delivery_days), priority: Number(zoneForm.priority), min_distance_km: Number(zoneForm.min_distance_km), max_distance_km: Number(zoneForm.max_distance_km) };
+      if (editingZone) {
+        const { error } = await supabase.from('shipping_zones').update(payload).eq('id', editingZone.id);
+        if (error) throw error;
+        showToast('Shipping zone updated.', 'success');
+      } else {
+        const { error } = await supabase.from('shipping_zones').insert(payload);
+        if (error) throw error;
+        showToast('Shipping zone added.', 'success');
+      }
+      setShowZoneModal(false);
+      fetchData();
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to save zone.', 'error');
+    } finally {
+      setSavingZone(false);
+    }
+  };
+
+  const deleteZone = async (id: string) => {
+    setDeletingZone(id);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('shipping_zones').delete().eq('id', id);
+      if (error) throw error;
+      setShippingZones((prev) => prev.filter((z) => z.id !== id));
+      showToast('Zone removed.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to delete zone.', 'error');
+    } finally {
+      setDeletingZone(null);
+    }
+  };
+
+  const toggleZoneActive = async (z: ShippingZone) => {
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('shipping_zones').update({ is_active: !z.is_active }).eq('id', z.id);
+      if (error) throw error;
+      setShippingZones((prev) => prev.map((zone) => zone.id === z.id ? { ...zone, is_active: !zone.is_active } : zone));
+      showToast(`Zone ${!z.is_active ? 'activated' : 'deactivated'}.`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to update zone.', 'error');
+    }
+  };
+
   // ── Product Actions (stub) ───────────────────────────────────────────────
 
   const openAddProduct = () => {
     setEditingProduct(null);
     setProductForm(EMPTY_PRODUCT);
+    setProductImageFile(null);
+    setProductImagePreview('');
     setShowProductModal(true);
+  };
+
+  const handleProductImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProductImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setProductImagePreview(dataUrl);
+      setProductForm((p) => ({ ...p, image_url: dataUrl }));
+    };
+    reader.readAsDataURL(file);
   };
 
   // ── Loading / Guard ─────────────────────────────────────────────────────────
 
-  if (authLoading || checkingRole) {
+  if (checkingRole) {
     return (
       <main className="bg-[#FAF6F0] min-h-screen">
         <Header />
@@ -1173,6 +1432,10 @@ export default function AdminPage() {
     { id: 'custom-products-admin', label: `Custom Products (${customProducts.length})`, icon: 'SparklesIcon' },
     { id: 'brand-templates', label: 'Brand Templates', icon: 'SwatchIcon' },
     { id: 'users', label: `Users (${users.length})`, icon: 'UsersIcon' },
+    { id: 'shipping-policy', label: 'Shipping Policy', icon: 'TruckIcon' },
+    { id: 'privacy-policy', label: 'Privacy Policy', icon: 'ShieldCheckIcon' },
+    { id: 'terms-conditions', label: 'Terms & Conditions', icon: 'DocumentTextIcon' },
+    { id: 'shipping-charges', label: 'Shipping Charges', icon: 'TruckIcon' },
   ];
 
   const inventoryProducts = products.filter((p) =>
@@ -1213,6 +1476,13 @@ export default function AdminPage() {
               className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-foreground text-xs font-semibold uppercase tracking-[0.15em] hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
             >
               Refresh
+            </button>
+            <button
+              onClick={handleLogout}
+              className="h-10 px-5 rounded-full border border-red-200 text-red-500 text-xs font-semibold uppercase tracking-[0.15em] hover:bg-red-50 hover:border-red-400 transition-colors flex items-center gap-2"
+            >
+              <Icon name="ArrowRightOnRectangleIcon" size={14} />
+              Logout
             </button>
           </div>
         </div>
@@ -1312,7 +1582,7 @@ export default function AdminPage() {
                         {outOfStockProducts.slice(0, 3).map((p) => (
                           <div key={p.id} className="flex items-center justify-between">
                             <span className="text-xs text-red-600 truncate">{p.name}</span>
-                            <button onClick={() => setActiveTab('inventory')} className="text-xs font-semibold text-red-600 hover:underline shrink-0 ml-2">Restock</button>
+                            <button onClick={() => setActiveTab('inventory')} className="text-xs font-semibold text-red-600 hover:underline ml-2">Restock</button>
                           </div>
                         ))}
                         {outOfStockProducts.length > 3 && (
@@ -1339,7 +1609,7 @@ export default function AdminPage() {
                   <button
                     key={item.label}
                     onClick={item.action}
-                    className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-5 flex items-center gap-3 hover:border-primary hover:shadow-card transition-all text-left group"
+                    className="bg-white rounded-2xl border border-[rgba(196,120,90,0.2)] p-5 flex items-center gap-3 hover:border-primary hover:shadow-card transition-all text-left group"
                   >
                     <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary transition-colors">
                       <Icon name={item.icon} size={16} className="text-primary group-hover:text-white" />
@@ -1371,8 +1641,12 @@ export default function AdminPage() {
                       <div>
                         <p className="text-sm font-semibold text-foreground">#{order.order_number}</p>
                         <p className="text-xs text-muted-foreground">{order?.user_profiles?.full_name || '—'}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-bold text-foreground">₹{(order.total / 100).toLocaleString('en-IN')}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.1em] border ${STATUS_COLORS[order.status] || STATUS_COLORS.pending}`}>{order.status}</span>
                         <a
                           href={getOrderWhatsAppLink(order)}
@@ -1433,7 +1707,7 @@ export default function AdminPage() {
                 <div className="space-y-3">
                   {getOrdersByStatus().map(({ status, count }) => (
                     <div key={status} className="flex items-center gap-3">
-                      <span className={`w-24 text-[10px] font-bold uppercase tracking-[0.1em] px-2 py-1 rounded-full border text-center ${STATUS_COLORS[status] || STATUS_COLORS.pending}`}>{status}</span>
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.1em] border ${STATUS_COLORS[status] || STATUS_COLORS.pending}`}>{status}</span>
                       <div className="flex-1 bg-[#EDE8E0] rounded-full h-2">
                         <div className="bg-primary h-2 rounded-full" style={{ width: `${(count / orders.length) * 100}%` }} />
                       </div>
@@ -1487,7 +1761,15 @@ export default function AdminPage() {
                           >
                             {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
-                          <a href={getOrderWhatsAppLink(order)} target="_blank" rel="noopener noreferrer" className="w-7 h-7 rounded-full bg-green-500 flex items-center justify-center text-white hover:bg-green-600 transition-colors text-[10px] font-bold" title="WhatsApp customer">WA</a>
+                          <a
+                            href={getOrderWhatsAppLink(order)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-7 h-7 rounded-full bg-green-500 flex items-center justify-center text-white hover:bg-green-600 transition-colors text-[10px] font-bold"
+                            title="WhatsApp customer"
+                          >
+                            WA
+                          </a>
                         </div>
                       </div>
                     ))}
@@ -1505,7 +1787,7 @@ export default function AdminPage() {
                 <div className="flex items-center gap-3">
                   <button onClick={downloadCsvTemplate} className="h-10 px-4 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center gap-2">
                     <Icon name="ArrowDownTrayIcon" size={14} />
-                    CSV Template
+                    CSVTemplate
                   </button>
                   <button onClick={openAddProduct} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2">
                     <Icon name="PlusIcon" size={14} />
@@ -1515,8 +1797,8 @@ export default function AdminPage() {
               </div>
               {/* CSV Upload */}
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                <h3 className="font-semibold text-foreground text-sm mb-1">Bulk Upload via CSV</h3>
-                <p className="text-xs text-muted-foreground mb-4">Upload multiple products at once using a CSV file.</p>
+                <h3 className="font-semibold text-foreground mb-2 text-sm">Bulk Upload via CSV</h3>
+                <p className="mb-2 text-xs text-muted-foreground">Upload multiple products at once using a CSV file.</p>
                 <div onClick={() => csvInputRef.current?.click()} className="border-2 border-dashed border-[rgba(196,120,90,0.3)] rounded-2xl p-6 text-center cursor-pointer hover:border-primary transition-colors mb-4">
                   <Icon name="DocumentArrowUpIcon" size={24} className="text-muted-foreground mx-auto mb-2" />
                   <p className="text-sm font-semibold text-foreground">{csvFile ? csvFile.name : 'Click to upload CSV'}</p>
@@ -1526,7 +1808,7 @@ export default function AdminPage() {
                 {csvPreview.length > 0 && (
                   <div>
                     <p className="text-xs font-semibold text-foreground mb-2">{csvPreview.length} products ready to upload</p>
-                    <button onClick={uploadCsvProducts} disabled={uploadingCsv} className="h-9 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
+                    <button onClick={uploadCsvProducts} disabled={uploadingCsv} className="px-4 py-2 rounded-full bg-foreground text-[#FAF6F0] font-semibold uppercase tracking-[0.1em] hover:bg-primary transition-colors disabled:opacity-50">
                       {uploadingCsv ? 'Uploading…' : `Upload ${csvPreview.length} Products`}
                     </button>
                   </div>
@@ -1538,8 +1820,7 @@ export default function AdminPage() {
                   {products.length === 0 ? (
                     <div className="px-6 py-12 text-center">
                       <Icon name="ArchiveBoxIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
-                      <p className="text-sm font-semibold text-foreground mb-1">No products yet</p>
-                      <button onClick={openAddProduct} className="mt-2 h-9 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors">Add Product</button>
+                      <p className="text-sm font-semibold text-foreground">No products yet</p>
                     </div>
                   ) : products.map((product) => (
                     <div key={product.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAF6F0]/50 transition-colors">
@@ -1569,7 +1850,7 @@ export default function AdminPage() {
                           {product.is_active ? 'Hide' : 'Show'}
                         </button>
                         <button
-                          onClick={() => { setEditingProduct(product); setProductForm({ name: product.name, slug: product.slug, description: product.description, price: product.price, original_price: product.original_price, category_id: product.category_id, material: product.material, badge: product.badge, badge_color: product.badge_color, image_url: product.image_url, alt_text: product.alt_text, in_stock: product.in_stock, is_active: product.is_active, display_order: product.display_order, stock_quantity: product.stock_quantity, low_stock_threshold: product.low_stock_threshold }); setShowProductModal(true); }}
+                          onClick={() => { setEditingProduct(product); setProductForm({ name: product.name, slug: product.slug, description: product.description, short_description: product.short_description || '', price: product.price, original_price: product.original_price, category_id: product.category_id, material: product.material, badge: product.badge, badge_color: product.badge_color, image_url: product.image_url, alt_text: product.alt_text, additional_images: product.additional_images || [], specifications: product.specifications || [], care_instructions: product.care_instructions || '', tags: product.tags || [], sku: product.sku || '', weight: product.weight || '', dimensions: product.dimensions || '', is_featured: product.is_featured || false, in_stock: product.in_stock, is_active: product.is_active, display_order: product.display_order, stock_quantity: product.stock_quantity, low_stock_threshold: product.low_stock_threshold }); setProductImageFile(null); setProductImagePreview(product.image_url || ''); setShowProductModal(true); }}
                           className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                         >
                           <Icon name="PencilIcon" size={12} />
@@ -1579,14 +1860,15 @@ export default function AdminPage() {
                             setDeletingProduct(product.id);
                             try {
                               const supabase = createClient();
-                              await supabase.from('products').delete().eq('id', product.id);
+                              const { error } = await supabase.from('products').delete().eq('id', product.id);
+                              if (error) throw new Error(error.message);
                               setProducts((prev) => prev.filter((p) => p.id !== product.id));
                               showToast('Product deleted.', 'success');
-                            } catch { showToast('Failed to delete product.', 'error'); }
+                            } catch (err: any) { showToast(err?.message || 'Failed to delete product.', 'error'); }
                             finally { setDeletingProduct(null); }
                           }}
                           disabled={deletingProduct === product.id}
-                          className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                          className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"
                         >
                           <Icon name="TrashIcon" size={12} />
                         </button>
@@ -1598,59 +1880,216 @@ export default function AdminPage() {
               {/* Product Modal */}
               {showProductModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                     <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
                       <h3 className="font-display italic text-lg font-semibold text-foreground">{editingProduct ? 'Edit Product' : 'Add Product'}</h3>
                       <button onClick={() => setShowProductModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
                     </div>
-                    <div className="p-6 space-y-4">
-                      {[
-                        { label: 'Product Name *', key: 'name', placeholder: 'e.g. Aurora Resin Pendant' },
-                        { label: 'Image URL', key: 'image_url', placeholder: 'https://...' },
-                        { label: 'Alt Text', key: 'alt_text', placeholder: 'Describe the image' },
-                        { label: 'Material', key: 'material', placeholder: 'e.g. Resin + Crystal' },
-                        { label: 'Badge', key: 'badge', placeholder: 'e.g. Bestseller' },
-                      ].map(({ label, key, placeholder }) => (
-                        <div key={key}>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">{label}</label>
-                          <input type="text" value={(productForm as any)[key] || ''} onChange={(e) => setProductForm((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                    <div className="p-6 space-y-5">
+                      {/* Section: Basic Info */}
+                      <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary border-b border-[rgba(196,120,90,0.1)] pb-2">Basic Information</p>
+
+                      {/* Product Image Upload */}
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Product Image</label>
+                        <div
+                          onClick={() => productImageInputRef.current?.click()}
+                          className="relative border-2 border-dashed border-[rgba(196,120,90,0.3)] rounded-2xl overflow-hidden cursor-pointer hover:border-primary transition-colors"
+                          style={{ height: productImagePreview ? 160 : 80 }}
+                        >
+                          {productImagePreview ? (
+                            <img src={productImagePreview} alt="Product preview" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-full gap-2">
+                              <Icon name="PhotoIcon" size={22} className="text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">Click to upload image</span>
+                            </div>
+                          )}
                         </div>
-                      ))}
+                        <input ref={productImageInputRef} type="file" accept="image/*" className="hidden" onChange={handleProductImageSelect} />
+                        {productImageFile && (
+                          <p className="mt-1.5 text-xs text-primary font-medium flex items-center gap-1">
+                            <Icon name="CheckCircleIcon" size={12} />
+                            {productImageFile.name}
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Product Name *</label>
+                        <input type="text" value={(productForm as any).name || ''} onChange={(e) => setProductForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Aurora Resin Pendant" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Short Description</label>
+                        <input type="text" value={(productForm as any).short_description || ''} onChange={(e) => setProductForm((p) => ({ ...p, short_description: e.target.value }))} placeholder="One-line summary shown on product detail page" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Full Description</label>
+                        <textarea value={(productForm as any).description || ''} onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))} rows={4} placeholder="Detailed product description..." className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none" />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Category</label>
+                        <select
+                          value={(productForm as any).category_id || ''}
+                          onChange={(e) => setProductForm((p) => ({ ...p, category_id: e.target.value || null }))}
+                          className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                        >
+                          <option value="">— No Category —</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Image URL</label>
+                        <input type="text" value={(productForm as any).image_url || ''} onChange={(e) => setProductForm((p) => ({ ...p, image_url: e.target.value }))} placeholder="https://... (or upload above)" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Alt Text</label>
+                        <input type="text" value={(productForm as any).alt_text || ''} onChange={(e) => setProductForm((p) => ({ ...p, alt_text: e.target.value }))} placeholder="Describe the image for accessibility" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+
+                      {/* Section: Pricing & Inventory */}
+                      <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary border-b border-[rgba(196,120,90,0.1)] pb-2 pt-2">Pricing & Inventory</p>
+
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Price (paise) *</label>
-                          <input type="number" min="0" value={productForm.price} onChange={(e) => setProductForm((p) => ({ ...p, price: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                          <input type="text" inputMode="numeric" value={(productForm as any).price || 0} onChange={(e) => { const val = e.target.value.replace(/[^0-9]/g, ''); setProductForm((p) => ({ ...p, price: val === '' ? 0 : Number(val) })); }} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                          <p className="text-[10px] text-muted-foreground mt-1">₹{(((productForm as any).price || 0) / 100).toFixed(2)}</p>
                         </div>
                         <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Stock Qty</label>
-                          <input type="number" min="0" value={productForm.stock_quantity ?? 0} onChange={(e) => setProductForm((p) => ({ ...p, stock_quantity: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Original Price (paise)</label>
+                          <input type="text" inputMode="numeric" value={(productForm as any).original_price || ''} onChange={(e) => { const val = e.target.value.replace(/[^0-9]/g, ''); setProductForm((p) => ({ ...p, original_price: val === '' ? null : Number(val) })); }} placeholder="Leave blank if no discount" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Description</label>
-                        <textarea value={productForm.description} onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))} rows={3} className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary resize-none" />
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Stock Qty</label>
+                          <input type="number" min="0" value={(productForm as any).stock_quantity ?? 0} onChange={(e) => setProductForm((p) => ({ ...p, stock_quantity: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Low Stock Alert</label>
+                          <input type="number" min="0" value={(productForm as any).low_stock_threshold ?? 5} onChange={(e) => setProductForm((p) => ({ ...p, low_stock_threshold: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">SKU</label>
+                          <input type="text" value={(productForm as any).sku || ''} onChange={(e) => setProductForm((p) => ({ ...p, sku: e.target.value }))} placeholder="e.g. ARP-001" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
                       </div>
-                      <div className="flex gap-4">
-                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={productForm.is_active} onChange={(e) => setProductForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" /><span className="text-xs font-semibold text-foreground">Active</span></label>
-                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={productForm.in_stock} onChange={(e) => setProductForm((p) => ({ ...p, in_stock: e.target.checked }))} className="w-4 h-4 accent-primary" /><span className="text-xs font-semibold text-foreground">In Stock</span></label>
+
+                      {/* Section: Product Details */}
+                      <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary border-b border-[rgba(196,120,90,0.1)] pb-2 pt-2">Product Details</p>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Material</label>
+                          <input type="text" value={(productForm as any).material || ''} onChange={(e) => setProductForm((p) => ({ ...p, material: e.target.value }))} placeholder="e.g. Resin + Crystal" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Badge</label>
+                          <input type="text" value={(productForm as any).badge || ''} onChange={(e) => setProductForm((p) => ({ ...p, badge: e.target.value || null }))} placeholder="e.g. Bestseller, New" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Weight</label>
+                          <input type="text" value={(productForm as any).weight || ''} onChange={(e) => setProductForm((p) => ({ ...p, weight: e.target.value }))} placeholder="e.g. 150g" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Dimensions</label>
+                          <input type="text" value={(productForm as any).dimensions || ''} onChange={(e) => setProductForm((p) => ({ ...p, dimensions: e.target.value }))} placeholder="e.g. 10 x 5 x 2 cm" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Tags <span className="normal-case font-normal">(comma-separated)</span></label>
+                        <input
+                          type="text"
+                          value={Array.isArray((productForm as any).tags) ? (productForm as any).tags.join(', ') : ''}
+                          onChange={(e) => setProductForm((p) => ({ ...p, tags: e.target.value.split(',').map((t: string) => t.trim()).filter(Boolean) }))}
+                          placeholder="e.g. pendant, jewelry, resin, handmade"
+                          className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Specifications <span className="normal-case font-normal">(one per line: Label: Value)</span></label>
+                        <textarea
+                          value={Array.isArray((productForm as any).specifications) ? (productForm as any).specifications.map((s: { label: string; value: string }) => `${s.label}: ${s.value}`).join('\n') : ''}
+                          onChange={(e) => {
+                            const specs = e.target.value.split('\n').map((line: string) => {
+                              const colonIdx = line.indexOf(':');
+                              if (colonIdx === -1) return null;
+                              return { label: line.slice(0, colonIdx).trim(), value: line.slice(colonIdx + 1).trim() };
+                            }).filter(Boolean) as { label: string; value: string }[];
+                            setProductForm((p) => ({ ...p, specifications: specs }));
+                          }}
+                          rows={4}
+                          placeholder={"Material: UV Resin + Crystal\nChain Length: 18 inches\nPendant Size: 3 cm diameter"}
+                          className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Care Instructions</label>
+                        <textarea
+                          value={(productForm as any).care_instructions || ''}
+                          onChange={(e) => setProductForm((p) => ({ ...p, care_instructions: e.target.value }))}
+                          rows={3}
+                          placeholder="e.g. Avoid prolonged exposure to sunlight. Clean gently with a soft cloth."
+                          className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none"
+                        />
+                      </div>
+
+                      {/* Section: Visibility */}
+                      <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary border-b border-[rgba(196,120,90,0.1)] pb-2 pt-2">Visibility & Status</p>
+
+                      <div className="flex flex-wrap gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={(productForm as any).is_active} onChange={(e) => setProductForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                          <span className="text-xs font-semibold text-foreground">Active (visible to customers)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={(productForm as any).in_stock} onChange={(e) => setProductForm((p) => ({ ...p, in_stock: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                          <span className="text-xs font-semibold text-foreground">In Stock</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={(productForm as any).is_featured || false} onChange={(e) => setProductForm((p) => ({ ...p, is_featured: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                          <span className="text-xs font-semibold text-foreground">Featured</span>
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Display Order</label>
+                        <input type="number" min="0" value={(productForm as any).display_order || 0} onChange={(e) => setProductForm((p) => ({ ...p, display_order: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
                       </div>
                     </div>
                     <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
                       <button onClick={() => setShowProductModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
                       <button
-                        disabled={savingProduct || !productForm.name?.trim()}
+                        disabled={savingProduct || !(productForm as any).name?.trim()}
                         onClick={async () => {
-                          if (!productForm.name?.trim()) { showToast('Product name is required.', 'error'); return; }
+                          if (!(productForm as any).name?.trim()) { showToast('Product name is required.', 'error'); return; }
                           setSavingProduct(true);
                           try {
                             const supabase = createClient();
-                            const slug = productForm.slug || productForm.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-                            const payload = { ...productForm, slug, updated_at: new Date().toISOString() };
+                            let slug = (productForm as any).slug || (productForm as any).name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+                            const payload = { ...(productForm as any), slug, updated_at: new Date().toISOString() };
                             if (editingProduct) {
-                              await supabase.from('products').update(payload).eq('id', editingProduct.id);
+                              const { error } = await supabase.from('products').update(payload).eq('id', editingProduct.id);
+                              if (error) throw new Error(error.message);
                               showToast('Product updated.', 'success');
                             } else {
-                              await supabase.from('products').insert(payload);
+                              const { error } = await supabase.from('products').insert(payload);
+                              if (error) throw new Error(error.message);
                               showToast('Product added.', 'success');
                             }
                             setShowProductModal(false);
@@ -1660,7 +2099,7 @@ export default function AdminPage() {
                         }}
                         className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
                       >
-                        {savingProduct ? 'Saving…' : editingProduct ? 'Update' : 'Add Product'}
+                        {savingProduct ? 'Saving…' : editingProduct ? 'Update Product' : 'Add Product'}
                       </button>
                     </div>
                   </div>
@@ -1669,31 +2108,389 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* ── Story Tab ── */}
+          {activeTab === 'story' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Our Story</h2>
+                <button onClick={() => { setEditingStory(false); setStoryForm({ ...storyContent, title: '', subtitle: '', body: '', image_url: '', image_alt: '', quote: '', quote_author: '' }); setShowStoryModal(true); }} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2">
+                  <Icon name="PlusIcon" size={14} />
+                  Edit Story
+                </button>
+              </div>
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                {storyContent ? (
+                  <div className="flex items-center gap-4 px-6 py-4">
+                    <div className="w-12 h-12 rounded-xl bg-[#EDE8E0] overflow-hidden shrink-0">
+                      {storyContent.image_url ? <img src={storyContent.image_url} alt={storyContent.image_alt} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Icon name="PhotoIcon" size={20} className="text-muted-foreground" /></div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{storyContent.title}</p>
+                      <p className="text-xs text-muted-foreground">{storyContent.subtitle}</p>
+                      <p className="text-xs text-muted-foreground mt-1 truncate">{storyContent.body?.slice(0, 80)}{storyContent.body?.length > 80 ? '…' : ''}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => {
+                          setEditingStory(true);
+                          setStoryForm({ ...storyContent });
+                          setShowStoryModal(true);
+                        }}
+                        className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                        >
+                        <Icon name="PencilIcon" size={12} />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const supabase = createClient();
+                            await supabase.from('story_content').delete().eq('id', storyContent.id!);
+                            setStoryContent(DEFAULT_STORY);
+                          } catch { showToast('Failed to delete story.', 'error'); }
+                        }}
+                        className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"
+                      >
+                        <Icon name="TrashIcon" size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-6 py-12 text-center"><Icon name="PhotoIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm font-semibold text-foreground">No story content</p></div>
+                )}
+              </div>
+              {/* Story Modal */}
+              {showStoryModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 overflow-y-auto">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-foreground">{editingStory ? 'Edit Story' : 'Add Story'}</h3>
+                      <button onClick={() => { setShowStoryModal(false); setEditingStory(false); }} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
+                    </div>
+                    <div className="space-y-4">
+                      {/* Image upload */}
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Image</label>
+                        <div
+                          onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = 'image/*';
+                            input.onchange = () => {
+                              if (!input.files || input.files.length === 0) return;
+                              const file = input.files[0];
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                const dataUrl = reader.result as string;
+                                setStoryForm((p) => ({ ...p, image_url: dataUrl, image_alt: p.image_alt || 'Story Image' }));
+                              };
+                              reader.readAsDataURL(file);
+                            };
+                            input.click();
+                          }}
+                          className="relative border-2 border-dashed border-[rgba(196,120,90,0.3)] rounded-2xl h-32 flex items-center justify-center cursor-pointer hover:border-primary transition-colors"
+                        >
+                          {storyForm.image_url ? (
+                            <img src={storyForm.image_url} alt={storyForm.image_alt} className="absolute inset-0 w-full h-full object-cover" />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center gap-2">
+                              <Icon name="PhotoIcon" size={20} className="text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">Click to upload</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Title</label>
+                        <input
+                          type="text"
+                          className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                          value={storyForm.title}
+                          onChange={(e) => setStoryForm((p) => ({ ...p, title: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Subtitle</label>
+                        <input
+                          type="text"
+                          className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                          value={storyForm.subtitle}
+                          onChange={(e) => setStoryForm((p) => ({ ...p, subtitle: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Body</label>
+                        <textarea
+                          className="w-full px-4 py-2 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none"
+                          rows={4}
+                          value={storyForm.body}
+                          onChange={(e) => setStoryForm((p) => ({ ...p, body: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Quote</label>
+                        <input
+                          type="text"
+                          className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                          value={storyForm.quote}
+                          onChange={(e) => setStoryForm((p) => ({ ...p, quote: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Quote Author</label>
+                        <input
+                          type="text"
+                          className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                          value={storyForm.quote_author}
+                          onChange={(e) => setStoryForm((p) => ({ ...p, quote_author: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    {/* Save */}
+                    <div className="flex justify-end gap-2 mt-4">
+                      <button
+                        onClick={() => {
+                          setShowStoryModal(false);
+                          setEditingStory(false);
+                        }}
+                        className="px-4 py-2 rounded-full bg-gray-200 hover:bg-gray-300 transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!storyForm.title.trim()) {
+                            showToast('Title is required.', 'error');
+                            return;
+                          }
+                          setSavingStory(true);
+                          // Save to backend
+                          try {
+                            const supabase = createClient();
+                            if (storyForm.id) {
+                              const { error } = await supabase.from('story_content').update({ ...storyForm, section_key: 'craft_story', updated_at: new Date().toISOString() }).eq('id', storyForm.id);
+                              if (error) throw new Error(error.message);
+                              setStoryContent(storyForm);
+                            } else {
+                              const { data, error } = await supabase.from('story_content').upsert({ ...storyForm, section_key: 'craft_story', updated_at: new Date().toISOString() }, { onConflict: 'section_key' }).select().single();
+                              if (error) throw new Error(error.message);
+                              if (data) setStoryContent(data);
+                            }
+                            showToast('Story saved.', 'success');
+                            setShowStoryModal(false);
+                            setEditingStory(false);
+                          } catch { showToast('Failed to save story.', 'error'); }
+                          finally { setSavingStory(false); }
+                        }}
+                        className="px-4 py-2 rounded-full bg-primary text-white hover:bg-primary/80 transition"
+                        disabled={savingStory}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Google Reviews Tab ── */}
+          {activeTab === 'google-reviews' && (
+            <div className="space-y-4">
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="text"
+                  placeholder="Google Place ID"
+                  className="w-1/2 h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                  value={googlePlaceId}
+                  onChange={(e) => setGooglePlaceId(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="API Key"
+                  className="w-1/2 h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                  value={googleApiKey}
+                  onChange={(e) => setGoogleApiKey(e.target.value)}
+                />
+              </div>
+              <button
+                onClick={async () => {
+                  if (!googlePlaceId || !googleApiKey) {
+                    showToast('Enter both Place ID and API key.', 'error');
+                    return;
+                  }
+                  setFetchingReviews(true);
+                  try {
+                    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${googlePlaceId}&fields=reviews&key=${googleApiKey}`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    if (data.status !== 'OK') {
+                      setGooglePlaceData(null);
+                      showToast('Error fetching reviews.', 'error');
+                    } else {
+                      setGooglePlaceData(data.result);
+                      setFetchingReviews(false);
+                    }
+                  } catch { showToast('Failed to fetch reviews.', 'error'); }
+                }}
+                className="px-4 py-2 rounded-full bg-primary text-white hover:bg-primary/80 transition"
+              >
+                {fetchingReviews ? 'Fetching…' : 'Fetch Reviews'}
+              </button>
+              {/* reviews display below */}
+              {fetchingReviews && <p className="mt-4 text-center">Fetching reviews...</p>}
+              {googlePlaceData && googlePlaceData.reviews && (
+                <div className="mt-4 space-y-2 max-h-[60vh] overflow-y-auto">
+                  {googlePlaceData.reviews.map((review, i) => (
+                    <div key={i} className="p-2 bg-gray-100 rounded-lg shadow-sm space-y-1">
+                      <div className="flex items-center gap-2">
+                        <img src={review.profile_photo_url} alt={review.author_name} className="w-8 h-8 rounded-full" />
+                        <div>
+                          <p className="text-sm font-semibold">{review.author_name}</p>
+                          <div className="flex items-center gap-1 text-yellow-400 text-xs">
+                            {'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-sm">{review.text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Vyaapar Tab ── */}
+          {activeTab === 'vyaapar' && (
+            <div className="space-y-4">
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={exportOrdersVyaapar}
+                  className="px-4 py-2 rounded-full bg-foreground text-[#FAF6F0] font-semibold uppercase tracking-[0.1em] hover:bg-primary transition"
+                >
+                  {exportingCsv ? 'Exporting…' : 'Export Orders'}
+                </button>
+                <button
+                  onClick={exportInvoicesVyaapar}
+                  className="px-4 py-2 rounded-full bg-foreground text-[#FAF6F0] font-semibold uppercase tracking-[0.1em] hover:bg-primary transition"
+                >
+                  {exportingCsv ? 'Exporting…' : 'Export Invoices'}
+                </button>
+              </div>
+              {/* CSV Import Section */}
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                <h3 className="font-semibold text-foreground mb-2 text-sm">Import Vyaapar Stock CSV</h3>
+                <p className="mb-2 text-xs text-muted-foreground">Paste CSV data copied from Vyaapar export, or upload file.</p>
+                <textarea
+                  className="w-full h-24 px-4 py-2 border border-dashed border-[rgba(196,120,90,0.3)] rounded-xl resize-none mb-2"
+                  placeholder="OrderID,OrderDate,Item,SKU,Qty"
+                  value={pincodeForm.pincode} // Updated to match the correct value
+                  onChange={(e) => {
+                    setBulkPincodes(e.target.value);
+                  }}
+                />
+                <button
+                  onClick={importBulkPincodes}
+                  disabled={importingPincodes || !bulkPincodes.trim()}
+                  className="px-4 py-2 rounded-full bg-foreground text-[#FAF6F0] font-semibold uppercase tracking-[0.1em] hover:bg-primary transition"
+                >
+                  {importingPincodes ? 'Importing…' : 'Import CSV'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Pincodes Tab ── */}
+          {activeTab === 'pincodes' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Delivery Pincodes ({pincodes.length})</h2>
+                <button onClick={openAddPincode} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2">
+                  <Icon name="PlusIcon" size={14} />
+                  Add Pincode
+                </button>
+              </div>
+              {/* Bulk Import */}
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                <h3 className="font-semibold text-foreground mb-2 text-sm">Bulk Import Pincodes</h3>
+                <p className="mb-2 text-xs text-muted-foreground">Paste one 6-digit pincode per line to add multiple at once.</p>
+                <textarea
+                  className="w-full h-24 px-4 py-2 border border-dashed border-[rgba(196,120,90,0.3)] rounded-xl resize-none mb-2"
+                  placeholder={"110001\n400001\n560001"}
+                  value={bulkPincodes}
+                  onChange={(e) => { setBulkPincodes(e.target.value); }}
+                />
+                <button
+                  onClick={importBulkPincodes}
+                  disabled={importingPincodes || !bulkPincodes.trim()}
+                  className="px-4 py-2 rounded-full bg-foreground text-[#FAF6F0] font-semibold uppercase tracking-[0.1em] hover:bg-primary transition"
+                >
+                  {importingPincodes ? 'Importing…' : 'Import Pincodes'}
+                </button>
+              </div>
+              {/* Search + List */}
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
+                  <input
+                    type="text"
+                    className="w-full h-9 px-4 rounded-full border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                    placeholder="Search pincode or area…"
+                    value={pincodeSearch}
+                    onChange={(e) => setPincodeSearch(e.target.value)}
+                  />
+                </div>
+                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                  {pincodes.filter((p) => !pincodeSearch || p.pincode.includes(pincodeSearch) || p.area_name.toLowerCase().includes(pincodeSearch.toLowerCase()) || p.city.toLowerCase().includes(pincodeSearch.toLowerCase())).length === 0 ? (
+                    <div className="px-6 py-12 text-center"><Icon name="MapPinIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm text-muted-foreground">No pincodes found.</p></div>
+                  ) : pincodes.filter((p) => !pincodeSearch || p.pincode.includes(pincodeSearch) || p.area_name.toLowerCase().includes(pincodeSearch.toLowerCase()) || p.city.toLowerCase().includes(pincodeSearch.toLowerCase())).map((pin) => (
+                    <div key={pin.id} className="flex items-center gap-4 px-6 py-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-foreground font-mono">{pin.pincode}</p>
+                        <p className="text-xs text-muted-foreground">{[pin.area_name, pin.city, pin.state].filter(Boolean).join(', ') || 'No area details'}</p>
+                        <p className="text-xs text-muted-foreground">{pin.delivery_days} day{pin.delivery_days !== 1 ? 's' : ''} delivery{pin.extra_charge > 0 ? ` · +₹${pin.extra_charge}` : ''}</p>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pin.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{pin.is_active ? 'Active' : 'Off'}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => togglePincodeActive(pin)} className="h-7 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">{pin.is_active ? 'Disable' : 'Enable'}</button>
+                        <button onClick={() => openEditPincode(pin)} className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"><Icon name="PencilIcon" size={11} /></button>
+                        <button onClick={() => deletePincode(pin.id)} disabled={deletingPincode === pin.id} className="w-7 h-7 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"><Icon name="TrashIcon" size={11} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Inventory Tab ── */}
           {activeTab === 'inventory' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-display italic text-2xl font-semibold text-foreground">Inventory</h2>
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Inventory ({products.length})</h2>
+              </div>
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-4">
                 <input
                   type="text"
+                  className="w-full h-10 px-4 rounded-full border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary mb-4"
+                  placeholder="Search products…"
                   value={inventorySearch}
                   onChange={(e) => setInventorySearch(e.target.value)}
-                  placeholder="Search products…"
-                  className="h-10 px-4 rounded-full border border-[rgba(196,120,90,0.2)] bg-white text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary w-64"
                 />
-              </div>
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
                 <div className="divide-y divide-[rgba(196,120,90,0.06)]">
                   {inventoryProducts.length === 0 ? (
-                    <div className="px-6 py-12 text-center"><Icon name="ClipboardDocumentListIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm text-muted-foreground">No products found.</p></div>
+                    <div className="py-12 text-center">
+                      <Icon name="ClipboardDocumentListIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
+                      <p className="text-sm text-muted-foreground">No products found.</p>
+                    </div>
                   ) : inventoryProducts.map((product) => (
-                    <div key={product.id} className="flex items-center gap-4 px-6 py-4">
+                    <div key={product.id} className="flex items-center gap-4 py-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-foreground truncate">{product.name}</p>
                         <p className="text-xs text-muted-foreground">{product.categories?.name || 'Uncategorized'}</p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${product.in_stock ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{product.in_stock ? 'In Stock' : 'Out of Stock'}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${product.in_stock ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                          {product.in_stock ? 'In Stock' : 'Out of Stock'}
+                        </span>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={async () => {
@@ -1707,9 +2504,9 @@ export default function AdminPage() {
                               finally { setUpdatingStock(null); }
                             }}
                             disabled={updatingStock === product.id}
-                            className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors text-sm font-bold disabled:opacity-50"
+                            className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors text-sm font-bold"
                           >−</button>
-                          <span className="text-sm font-bold text-foreground w-8 text-center">{product.stock_quantity ?? 0}</span>
+                          <span className="w-10 text-center text-sm font-bold text-foreground">{product.stock_quantity ?? 0}</span>
                           <button
                             onClick={async () => {
                               const newQty = (product.stock_quantity ?? 0) + 1;
@@ -1722,12 +2519,9 @@ export default function AdminPage() {
                               finally { setUpdatingStock(null); }
                             }}
                             disabled={updatingStock === product.id}
-                            className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors text-sm font-bold disabled:opacity-50"
+                            className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors text-sm font-bold"
                           >+</button>
                         </div>
-                        {(product.stock_quantity ?? 0) <= (product.low_stock_threshold ?? 5) && product.in_stock && (
-                          <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Low</span>
-                        )}
                       </div>
                     </div>
                   ))}
@@ -1741,68 +2535,79 @@ export default function AdminPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="font-display italic text-2xl font-semibold text-foreground">Coupons ({coupons.length})</h2>
-                <button onClick={() => { setEditingCoupon(null); setCouponForm(EMPTY_COUPON); setShowCouponModal(true); }} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2">
+                <button
+                  onClick={() => { setEditingCoupon(null); setCouponForm(EMPTY_COUPON); setShowCouponModal(true); }}
+                  className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2"
+                >
                   <Icon name="PlusIcon" size={14} />
                   Add Coupon
                 </button>
               </div>
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
-                {coupons.length === 0 ? (
-                  <div className="px-6 py-12 text-center"><Icon name="TicketIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm font-semibold text-foreground mb-1">No coupons yet</p></div>
-                ) : (
-                  <div className="divide-y divide-[rgba(196,120,90,0.06)]">
-                    {coupons.map((coupon) => (
-                      <div key={coupon.id} className="flex items-center gap-4 px-6 py-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="text-sm font-bold text-foreground font-mono">{coupon.code}</p>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${coupon.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{coupon.is_active ? 'Active' : 'Inactive'}</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">{coupon.discount_type === 'percentage' ? `${coupon.discount_value}% off` : `₹${coupon.discount_value} off`}{coupon.min_order_amount ? ` · Min ₹${coupon.min_order_amount}` : ''}</p>
-                          {coupon.valid_until && <p className="text-xs text-muted-foreground">Expires: {new Date(coupon.valid_until).toLocaleDateString('en-IN')}</p>}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={async () => {
-                              try {
-                                const supabase = createClient();
-                                await supabase.from('coupons').update({ is_active: !coupon.is_active }).eq('id', coupon.id);
-                                setCoupons((prev) => prev.map((c) => c.id === coupon.id ? { ...c, is_active: !c.is_active } : c));
-                                showToast(`Coupon ${!coupon.is_active ? 'activated' : 'deactivated'}.`, 'success');
-                              } catch { showToast('Failed to update coupon.', 'error'); }
-                            }}
-                            className="h-8 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                          >
-                            {coupon.is_active ? 'Deactivate' : 'Activate'}
-                          </button>
-                          <button
-                            onClick={() => { setEditingCoupon(coupon); setCouponForm({ code: coupon.code, description: coupon.description, discount_type: coupon.discount_type, discount_value: coupon.discount_value, min_order_amount: coupon.min_order_amount, max_discount_amount: coupon.max_discount_amount, usage_limit: coupon.usage_limit, valid_from: coupon.valid_from, valid_until: coupon.valid_until, is_active: coupon.is_active, expires_at: coupon.expires_at }); setShowCouponModal(true); }}
-                            className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                          >
-                            <Icon name="PencilIcon" size={12} />
-                          </button>
-                          <button
-                            onClick={async () => {
-                              setDeletingCoupon(coupon.id);
-                              try {
-                                const supabase = createClient();
-                                await supabase.from('coupons').delete().eq('id', coupon.id);
-                                setCoupons((prev) => prev.filter((c) => c.id !== coupon.id));
-                                showToast('Coupon deleted.', 'success');
-                              } catch { showToast('Failed to delete coupon.', 'error'); }
-                              finally { setDeletingCoupon(null); }
-                            }}
-                            disabled={deletingCoupon === coupon.id}
-                            className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
-                          >
-                            <Icon name="TrashIcon" size={12} />
-                          </button>
-                        </div>
+                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                  {coupons.length === 0 ? (
+                    <div className="px-6 py-12 text-center">
+                      <Icon name="TicketIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
+                      <p className="text-sm font-semibold text-foreground">No coupons yet</p>
+                    </div>
+                  ) : coupons.map((coupon) => (
+                    <div key={coupon.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAF6F0]/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-foreground font-mono">{coupon.code}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {coupon.discount_type === 'percentage' ? `${coupon.discount_value}% off` : `₹${coupon.discount_value} off`}
+                          {coupon.min_order_amount ? ` · Min ₹${coupon.min_order_amount / 100}` : ''}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {coupon.expires_at ? `Expires: ${new Date(coupon.expires_at).toLocaleDateString('en-IN')}` : 'No expiry'}
+                          {coupon.max_uses ? ` · Max uses: ${coupon.max_uses}` : ''}
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${coupon.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {coupon.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const supabase = createClient();
+                              await supabase.from('coupons').update({ is_active: !coupon.is_active }).eq('id', coupon.id);
+                              setCoupons((prev) => prev.map((c) => c.id === coupon.id ? { ...c, is_active: !c.is_active } : c));
+                              showToast(`Coupon ${!coupon.is_active ? 'activated' : 'deactivated'}.`, 'success');
+                            } catch { showToast('Failed to update coupon.', 'error'); }
+                          }}
+                          className="h-8 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                        >
+                          {coupon.is_active ? 'Disable' : 'Enable'}
+                        </button>
+                        <button
+                          onClick={() => { setEditingCoupon(coupon); setCouponForm({ code: coupon.code, discount_type: coupon.discount_type, discount_value: coupon.discount_value, min_order_amount: coupon.min_order_amount, max_uses: coupon.max_uses, expires_at: coupon.expires_at ? coupon.expires_at.slice(0, 10) : null, is_active: coupon.is_active, description: coupon.description || '' }); setShowCouponModal(true); }}
+                          className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                        >
+                          <Icon name="PencilIcon" size={12} />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            setDeletingCoupon(coupon.id);
+                            try {
+                              const supabase = createClient();
+                              await supabase.from('coupons').delete().eq('id', coupon.id);
+                              setCoupons((prev) => prev.filter((c) => c.id !== coupon.id));
+                              showToast('Coupon deleted.', 'success');
+                            } catch { showToast('Failed to delete coupon.', 'error'); }
+                            finally { setDeletingCoupon(null); }
+                          }}
+                          disabled={deletingCoupon === coupon.id}
+                          className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"
+                        >
+                          <Icon name="TrashIcon" size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
+              {/* Coupon Modal */}
               {showCouponModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
                   <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -1813,49 +2618,68 @@ export default function AdminPage() {
                     <div className="p-6 space-y-4">
                       <div>
                         <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Coupon Code *</label>
-                        <input type="text" value={couponForm.code} onChange={(e) => setCouponForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. SAVE20" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                        <input type="text" value={couponForm.code} onChange={(e) => setCouponForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="e.g. SAVE20" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm font-mono focus:outline-none focus:border-primary" />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Discount Type</label>
-                          <select value={couponForm.discount_type} onChange={(e) => setCouponForm((p) => ({ ...p, discount_type: e.target.value as 'percentage' | 'fixed' }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary">
-                            <option value="percentage">Percentage (%)</option>
-                            <option value="fixed">Fixed (₹)</option>
+                          <select value={couponForm.discount_type} onChange={(e) => setCouponForm((p) => ({ ...p, discount_type: e.target.value as 'percentage' | 'fixed' }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary">
+                            <option value="percentage">Percentage</option>
+                            <option value="fixed">Fixed Amount</option>
                           </select>
                         </div>
                         <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Discount Value</label>
-                          <input type="number" min="0" value={couponForm.discount_value} onChange={(e) => setCouponForm((p) => ({ ...p, discount_value: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Discount Value *</label>
+                          <input type="number" min="0" value={couponForm.discount_value} onChange={(e) => setCouponForm((p) => ({ ...p, discount_value: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Min Order (₹)</label>
-                          <input type="number" min="0" value={couponForm.min_order_amount ?? ''} onChange={(e) => setCouponForm((p) => ({ ...p, min_order_amount: e.target.value ? Number(e.target.value) : null }))} placeholder="No minimum" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Min Order Amount (₹)</label>
+                          <input type="number" min="0" value={couponForm.min_order_amount ?? ''} onChange={(e) => setCouponForm((p) => ({ ...p, min_order_amount: e.target.value ? Number(e.target.value) : null }))} placeholder="Leave blank for no minimum" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                         </div>
                         <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Valid Until</label>
-                          <input type="date" value={couponForm.valid_until ?? ''} onChange={(e) => setCouponForm((p) => ({ ...p, valid_until: e.target.value || null }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Max Uses</label>
+                          <input type="number" min="0" value={couponForm.max_uses ?? ''} onChange={(e) => setCouponForm((p) => ({ ...p, max_uses: e.target.value ? Number(e.target.value) : null }))} placeholder="Leave blank for unlimited" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                         </div>
                       </div>
-                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={couponForm.is_active} onChange={(e) => setCouponForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" /><span className="text-sm font-semibold text-foreground">Active</span></label>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Expires At</label>
+                        <input type="date" value={couponForm.expires_at || ''} onChange={(e) => setCouponForm((p) => ({ ...p, expires_at: e.target.value || null }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={couponForm.is_active} onChange={(e) => setCouponForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Active</span>
+                      </label>
                     </div>
                     <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
                       <button onClick={() => setShowCouponModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
                       <button
-                        disabled={savingCoupon || !couponForm.code.trim()}
+                        disabled={savingCoupon || !couponForm.code?.trim()}
                         onClick={async () => {
-                          if (!couponForm.code.trim()) { showToast('Coupon code is required.', 'error'); return; }
+                          if (!couponForm.code?.trim()) { showToast('Coupon code is required.', 'error'); return; }
                           setSavingCoupon(true);
                           try {
                             const supabase = createClient();
-                            const payload = { ...couponForm, valid_from: couponForm.valid_from || new Date().toISOString() };
+                            const payload = {
+                              code: couponForm.code,
+                              discount_type: couponForm.discount_type,
+                              discount_value: couponForm.discount_value,
+                              min_order_amount: couponForm.min_order_amount,
+                              max_uses: couponForm.max_uses,
+                              expires_at: couponForm.expires_at || null,
+                              is_active: couponForm.is_active,
+                              description: couponForm.description || '',
+                              updated_at: new Date().toISOString(),
+                            };
                             if (editingCoupon) {
-                              await supabase.from('coupons').update(payload).eq('id', editingCoupon.id);
+                              const { error } = await supabase.from('coupons').update(payload).eq('id', editingCoupon.id);
+                              if (error) throw new Error(error.message);
                               showToast('Coupon updated.', 'success');
                             } else {
-                              await supabase.from('coupons').insert(payload);
-                              showToast('Coupon created.', 'success');
+                              const { error } = await supabase.from('coupons').insert(payload);
+                              if (error) throw new Error(error.message);
+                              showToast('Coupon added.', 'success');
                             }
                             setShowCouponModal(false);
                             fetchData();
@@ -1864,7 +2688,7 @@ export default function AdminPage() {
                         }}
                         className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
                       >
-                        {savingCoupon ? 'Saving…' : editingCoupon ? 'Update' : 'Create Coupon'}
+                        {savingCoupon ? 'Saving…' : editingCoupon ? 'Update' : 'Add Coupon'}
                       </button>
                     </div>
                   </div>
@@ -1878,49 +2702,70 @@ export default function AdminPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="font-display italic text-2xl font-semibold text-foreground">Categories ({categories.length})</h2>
-                <button onClick={() => { setEditingCategory(null); setCategoryForm({ name: '', slug: '', description: '', display_order: 0, is_active: true }); setShowCategoryModal(true); }} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2">
+                <button
+                  onClick={() => { setEditingCategory(null); setCategoryForm({ name: '', slug: '', description: '', display_order: 0, is_active: true }); setShowCategoryModal(true); }}
+                  className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2"
+                >
                   <Icon name="PlusIcon" size={14} />
                   Add Category
                 </button>
               </div>
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
-                {categories.length === 0 ? (
-                  <div className="px-6 py-12 text-center"><Icon name="TagIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm font-semibold text-foreground">No categories yet</p></div>
-                ) : (
-                  <div className="divide-y divide-[rgba(196,120,90,0.06)]">
-                    {categories.map((cat) => (
-                      <div key={cat.id} className="flex items-center gap-4 px-6 py-4">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground">{cat.name}</p>
-                          <p className="text-xs text-muted-foreground">/{cat.slug} · Order: {cat.display_order}</p>
-                        </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{cat.is_active ? 'Active' : 'Hidden'}</span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => { setEditingCategory(cat); setCategoryForm({ name: cat.name, slug: cat.slug, description: cat.description, display_order: cat.display_order, is_active: cat.is_active }); setShowCategoryModal(true); }}
-                            className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                          >
-                            <Icon name="PencilIcon" size={12} />
-                          </button>
-                          <button
-                            onClick={async () => {
-                              try {
-                                const supabase = createClient();
-                                await supabase.from('categories').delete().eq('id', cat.id);
-                                setCategories((prev) => prev.filter((c) => c.id !== cat.id));
-                                showToast('Category deleted.', 'success');
-                              } catch { showToast('Failed to delete category.', 'error'); }
-                            }}
-                            className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"
-                          >
-                            <Icon name="TrashIcon" size={12} />
-                          </button>
-                        </div>
+                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                  {categories.length === 0 ? (
+                    <div className="px-6 py-12 text-center">
+                      <Icon name="TagIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
+                      <p className="text-sm font-semibold text-foreground">No categories yet</p>
+                    </div>
+                  ) : categories.map((cat) => (
+                    <div key={cat.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAF6F0]/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{cat.name}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{cat.slug}</p>
+                        {cat.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{cat.description}</p>}
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {cat.is_active ? 'Active' : 'Hidden'}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const supabase = createClient();
+                              await supabase.from('categories').update({ is_active: !cat.is_active }).eq('id', cat.id);
+                              setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, is_active: !c.is_active } : c));
+                              showToast(`Category ${!cat.is_active ? 'activated' : 'hidden'}.`, 'success');
+                            } catch { showToast('Failed to update category.', 'error'); }
+                          }}
+                          className="h-8 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                        >
+                          {cat.is_active ? 'Hide' : 'Show'}
+                        </button>
+                        <button
+                          onClick={() => { setEditingCategory(cat); setCategoryForm({ name: cat.name, slug: cat.slug, description: cat.description, display_order: cat.display_order, is_active: cat.is_active }); setShowCategoryModal(true); }}
+                          className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                        >
+                          <Icon name="PencilIcon" size={12} />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const supabase = createClient();
+                              await supabase.from('categories').delete().eq('id', cat.id);
+                              setCategories((prev) => prev.filter((c) => c.id !== cat.id));
+                              showToast('Category deleted.', 'success');
+                            } catch { showToast('Failed to delete category.', 'error'); }
+                          }}
+                          className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"
+                        >
+                          <Icon name="TrashIcon" size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
+              {/* Category Modal */}
               {showCategoryModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
                   <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
@@ -1929,45 +2774,42 @@ export default function AdminPage() {
                       <button onClick={() => setShowCategoryModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
                     </div>
                     <div className="p-6 space-y-4">
-                      <div>
-                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Name *</label>
-                        <input type="text" value={categoryForm.name} onChange={(e) => setCategoryForm((p) => ({ ...p, name: e.target.value, slug: p.slug || e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') }))} placeholder="e.g. Jewellery" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Slug</label>
-                        <input type="text" value={categoryForm.slug} onChange={(e) => setCategoryForm((p) => ({ ...p, slug: e.target.value }))} placeholder="e.g. jewellery" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Description</label>
-                        <textarea value={categoryForm.description} onChange={(e) => setCategoryForm((p) => ({ ...p, description: e.target.value }))} rows={2} className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary resize-none" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Display Order</label>
-                          <input type="number" min="0" value={categoryForm.display_order} onChange={(e) => setCategoryForm((p) => ({ ...p, display_order: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                      {[
+                        { label: 'Name *', key: 'name', placeholder: 'e.g. Preserved Florals' },
+                        { label: 'Slug *', key: 'slug', placeholder: 'e.g. preserved-florals' },
+                        { label: 'Description', key: 'description', placeholder: 'Short description' },
+                      ].map(({ label, key, placeholder }) => (
+                        <div key={key}>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">{label}</label>
+                          <input type="text" value={(categoryForm as any)[key] || ''} onChange={(e) => setCategoryForm((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                         </div>
-                        <div className="flex items-end pb-1">
-                          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={categoryForm.is_active} onChange={(e) => setCategoryForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" /><span className="text-sm font-semibold text-foreground">Active</span></label>
-                        </div>
+                      ))}
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Display Order</label>
+                        <input type="number" min="0" value={categoryForm.display_order} onChange={(e) => setCategoryForm((p) => ({ ...p, display_order: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                       </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={categoryForm.is_active} onChange={(e) => setCategoryForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Active</span>
+                      </label>
                     </div>
                     <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
                       <button onClick={() => setShowCategoryModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
                       <button
-                        disabled={savingCategory || !categoryForm.name.trim()}
+                        disabled={savingCategory || !categoryForm.name?.trim()}
                         onClick={async () => {
-                          if (!categoryForm.name.trim()) { showToast('Category name is required.', 'error'); return; }
+                          if (!categoryForm.name?.trim()) { showToast('Category name is required.', 'error'); return; }
                           setSavingCategory(true);
                           try {
                             const supabase = createClient();
-                            const slug = categoryForm.slug || categoryForm.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+                            let slug = categoryForm.slug || categoryForm.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
                             const payload = { ...categoryForm, slug };
                             if (editingCategory) {
                               await supabase.from('categories').update(payload).eq('id', editingCategory.id);
                               showToast('Category updated.', 'success');
                             } else {
                               await supabase.from('categories').insert(payload);
-                              showToast('Category created.', 'success');
+                              showToast('Category added.', 'success');
                             }
                             setShowCategoryModal(false);
                             fetchData();
@@ -1976,7 +2818,7 @@ export default function AdminPage() {
                         }}
                         className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
                       >
-                        {savingCategory ? 'Saving…' : editingCategory ? 'Update' : 'Create'}
+                        {savingCategory ? 'Saving…' : editingCategory ? 'Update' : 'Add Category'}
                       </button>
                     </div>
                   </div>
@@ -1991,23 +2833,22 @@ export default function AdminPage() {
               <h2 className="font-display italic text-2xl font-semibold text-foreground">Store Themes</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {themes.length === 0 ? (
-                  <div className="col-span-3 bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-12 text-center"><Icon name="SwatchIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm text-muted-foreground">No themes available.</p></div>
+                  <div className="col-span-full bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] px-6 py-12 text-center">
+                    <Icon name="SwatchIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm font-semibold text-foreground">No themes available</p>
+                  </div>
                 ) : themes.map((theme) => (
-                  <div key={theme.id} className={`bg-white rounded-2xl border-2 p-5 transition-all ${theme.is_active ? 'border-primary shadow-card' : 'border-[rgba(196,120,90,0.12)]'}`}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="flex gap-1.5">
-                        {[theme.primary_color, theme.secondary_color, theme.accent_color].map((color, i) => (
-                          <div key={i} className="w-5 h-5 rounded-full border border-white shadow-sm" style={{ backgroundColor: color }} />
-                        ))}
-                      </div>
-                      {theme.is_active && <span className="ml-auto text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">Active</span>}
+                  <div key={theme.id} className={`bg-white rounded-2xl border-2 p-5 transition-all ${theme.is_active ? 'border-primary shadow-card' : 'border-[rgba(196,120,90,0.2)]'}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-sm font-semibold text-foreground">{theme.name}</p>
+                      {theme.is_active && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-700">Active</span>}
                     </div>
-                    <p className="text-sm font-semibold text-foreground mb-1">{theme.name}</p>
-                    <p className="text-xs text-muted-foreground mb-4 line-clamp-2">{theme.description}</p>
-                    <div className="text-[10px] text-muted-foreground mb-4">
-                      <p>Display: {theme.font_display}</p>
-                      <p>Body: {theme.font_body}</p>
+                    <div className="flex items-center gap-2 mb-4">
+                      {[theme.primary_color, theme.secondary_color, theme.background_color, theme.accent_color].map((color, i) => (
+                        <div key={i} className="w-6 h-6 rounded-full border border-white shadow-sm" style={{ backgroundColor: color }} title={color} />
+                      ))}
                     </div>
+                    <p className="text-xs text-muted-foreground mb-4">{theme.description}</p>
                     {!theme.is_active && (
                       <button
                         onClick={async () => {
@@ -2024,7 +2865,7 @@ export default function AdminPage() {
                         disabled={activatingTheme === theme.id}
                         className="w-full h-9 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
                       >
-                        {activatingTheme === theme.id ? 'Activating…' : 'Activate Theme'}
+                        {activatingTheme === theme.id ? 'Activating…' : 'Activate'}
                       </button>
                     )}
                   </div>
@@ -2038,53 +2879,61 @@ export default function AdminPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="font-display italic text-2xl font-semibold text-foreground">Courier Partners ({couriers.length})</h2>
-                <button onClick={() => { setEditingCourier(null); setCourierForm(EMPTY_COURIER); setShowCourierModal(true); }} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2">
+                <button
+                  onClick={() => { setEditingCourier(null); setCourierForm(EMPTY_COURIER); setShowCourierModal(true); }}
+                  className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2"
+                >
                   <Icon name="PlusIcon" size={14} />
                   Add Courier
                 </button>
               </div>
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
-                {couriers.length === 0 ? (
-                  <div className="px-6 py-12 text-center"><Icon name="TruckIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm font-semibold text-foreground mb-1">No courier partners yet</p></div>
-                ) : (
-                  <div className="divide-y divide-[rgba(196,120,90,0.06)]">
-                    {couriers.map((courier) => (
-                      <div key={courier.id} className="flex items-center gap-4 px-6 py-4">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground">{courier.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">{courier.base_url || 'No base URL'}</p>
-                          <p className="text-xs text-muted-foreground truncate">{courier.tracking_url || 'No tracking URL'}</p>
-                        </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${courier.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{courier.is_active ? 'Active' : 'Inactive'}</span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => { setEditingCourier(courier); setCourierForm({ name: courier.name, api_key: courier.api_key, base_url: courier.base_url, tracking_url: courier.tracking_url, is_active: courier.is_active }); setShowCourierModal(true); }}
-                            className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                          >
-                            <Icon name="PencilIcon" size={12} />
-                          </button>
-                          <button
-                            onClick={async () => {
-                              setDeletingCourier(courier.id);
-                              try {
-                                const supabase = createClient();
-                                await supabase.from('courier_partners').delete().eq('id', courier.id);
-                                setCouriers((prev) => prev.filter((c) => c.id !== courier.id));
-                                showToast('Courier deleted.', 'success');
-                              } catch { showToast('Failed to delete courier.', 'error'); }
-                              finally { setDeletingCourier(null); }
-                            }}
-                            disabled={deletingCourier === courier.id}
-                            className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
-                          >
-                            <Icon name="TrashIcon" size={12} />
-                          </button>
-                        </div>
+                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                  {couriers.length === 0 ? (
+                    <div className="px-6 py-12 text-center">
+                      <Icon name="TruckIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
+                      <p className="text-sm font-semibold text-foreground">No courier partners yet</p>
+                      <p className="text-xs text-muted-foreground mt-1">Add courier partners to enable shipment tracking.</p>
+                    </div>
+                  ) : couriers.map((courier) => (
+                    <div key={courier.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAF6F0]/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{courier.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{courier.base_url || 'No base URL'}</p>
+                        {courier.tracking_url && <p className="text-xs text-muted-foreground truncate">{courier.tracking_url}</p>}
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${courier.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {courier.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => { setEditingCourier(courier); setCourierForm({ name: courier.name, api_key: courier.api_key, base_url: courier.base_url, tracking_url: courier.tracking_url, is_active: courier.is_active }); setShowCourierModal(true); }}
+                          className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                        >
+                          <Icon name="PencilIcon" size={12} />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            setDeletingCourier(courier.id);
+                            try {
+                              const supabase = createClient();
+                              await supabase.from('courier_partners').delete().eq('id', courier.id);
+                              setCouriers((prev) => prev.filter((c) => c.id !== courier.id));
+                              showToast('Courier deleted.', 'success');
+                            } catch { showToast('Failed to delete courier.', 'error'); }
+                            finally { setDeletingCourier(null); }
+                          }}
+                          disabled={deletingCourier === courier.id}
+                          className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"
+                        >
+                          <Icon name="TrashIcon" size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
+              {/* Courier Modal */}
               {showCourierModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
                   <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
@@ -2094,38 +2943,46 @@ export default function AdminPage() {
                     </div>
                     <div className="p-6 space-y-4">
                       {[
-                        { label: 'Courier Name *', key: 'name', placeholder: 'e.g. Delhivery' },
-                        { label: 'API Key', key: 'api_key', placeholder: 'API key (optional)' },
+                        { label: 'Name *', key: 'name', placeholder: 'e.g. Delhivery' },
+                        { label: 'API Key', key: 'api_key', placeholder: 'API key' },
                         { label: 'Base URL', key: 'base_url', placeholder: 'https://api.courier.com' },
                         { label: 'Tracking URL', key: 'tracking_url', placeholder: 'https://track.courier.com/{tracking_id}' },
                       ].map(({ label, key, placeholder }) => (
                         <div key={key}>
                           <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">{label}</label>
-                          <input type="text" value={(courierForm as any)[key] || ''} onChange={(e) => setCourierForm((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                          <input type="text" value={(courierForm as any)[key] || ''} onChange={(e) => setCourierForm((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                         </div>
                       ))}
-                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={courierForm.is_active} onChange={(e) => setCourierForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" /><span className="text-sm font-semibold text-foreground">Active</span></label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={courierForm.is_active} onChange={(e) => setCourierForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Active</span>
+                      </label>
                     </div>
                     <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
                       <button onClick={() => setShowCourierModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
                       <button
-                        disabled={savingCourier || !courierForm.name.trim()}
+                        disabled={savingCourier || !courierForm.name?.trim()}
                         onClick={async () => {
-                          if (!courierForm.name.trim()) { showToast('Courier name is required.', 'error'); return; }
+                          if (!courierForm.name?.trim()) { showToast('Courier name is required.', 'error'); return; }
                           setSavingCourier(true);
                           try {
                             const supabase = createClient();
                             if (editingCourier) {
-                              await supabase.from('courier_partners').update(courierForm).eq('id', editingCourier.id);
+                              const { error } = await supabase.from('courier_partners').update({ ...courierForm, updated_at: new Date().toISOString() }).eq('id', editingCourier.id);
+                              if (error) throw error;
                               showToast('Courier updated.', 'success');
                             } else {
-                              await supabase.from('courier_partners').insert(courierForm);
+                              const { error } = await supabase.from('courier_partners').insert(courierForm);
+                              if (error) throw error;
                               showToast('Courier added.', 'success');
                             }
                             setShowCourierModal(false);
                             fetchData();
-                          } catch (err: any) { showToast(err?.message || 'Failed to save courier.', 'error'); }
-                          finally { setSavingCourier(false); }
+                          } catch (err: any) {
+                            showToast(err?.message || 'Failed to save courier.', 'error');
+                          } finally {
+                            setSavingCourier(false);
+                          }
                         }}
                         className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
                       >
@@ -2138,241 +2995,13 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ── Pincodes Tab ── */}
-          {activeTab === 'pincodes' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-display italic text-2xl font-semibold text-foreground">Delivery Pincodes ({pincodes.length})</h2>
-                <button onClick={openAddPincode} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2">
-                  <Icon name="PlusIcon" size={14} />
-                  Add Pincode
-                </button>
-              </div>
-              {/* Bulk Import */}
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                <h3 className="font-semibold text-foreground text-sm mb-1">Bulk Import Pincodes</h3>
-                <p className="text-xs text-muted-foreground mb-3">Paste one 6-digit pincode per line to add multiple at once.</p>
-                <textarea value={bulkPincodes} onChange={(e) => setBulkPincodes(e.target.value)} placeholder={"110001\n400001\n560001"} rows={4} className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none mb-3" />
-                <button onClick={importBulkPincodes} disabled={importingPincodes || !bulkPincodes.trim()} className="h-9 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
-                  {importingPincodes ? 'Importing…' : 'Import Pincodes'}
-                </button>
-              </div>
-              {/* Search + List */}
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
-                <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
-                  <input type="text" value={pincodeSearch} onChange={(e) => setPincodeSearch(e.target.value)} placeholder="Search pincode or area…" className="w-full h-9 px-4 rounded-full border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                </div>
-                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
-                  {pincodes.filter((p) => !pincodeSearch || p.pincode.includes(pincodeSearch) || p.area_name.toLowerCase().includes(pincodeSearch.toLowerCase()) || p.city.toLowerCase().includes(pincodeSearch.toLowerCase())).length === 0 ? (
-                    <div className="px-6 py-12 text-center"><Icon name="MapPinIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm text-muted-foreground">No pincodes found.</p></div>
-                  ) : pincodes.filter((p) => !pincodeSearch || p.pincode.includes(pincodeSearch) || p.area_name.toLowerCase().includes(pincodeSearch.toLowerCase()) || p.city.toLowerCase().includes(pincodeSearch.toLowerCase())).map((pin) => (
-                    <div key={pin.id} className="flex items-center gap-4 px-6 py-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-foreground font-mono">{pin.pincode}</p>
-                        <p className="text-xs text-muted-foreground">{[pin.area_name, pin.city, pin.state].filter(Boolean).join(', ') || 'No area details'}</p>
-                        <p className="text-xs text-muted-foreground">{pin.delivery_days} day{pin.delivery_days !== 1 ? 's' : ''} delivery{pin.extra_charge > 0 ? ` · +₹${pin.extra_charge}` : ''}</p>
-                      </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pin.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{pin.is_active ? 'Active' : 'Off'}</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button onClick={() => togglePincodeActive(pin)} className="h-7 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">{pin.is_active ? 'Disable' : 'Enable'}</button>
-                        <button onClick={() => openEditPincode(pin)} className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"><Icon name="PencilIcon" size={11} /></button>
-                        <button onClick={() => deletePincode(pin.id)} disabled={deletingPincode === pin.id} className="w-7 h-7 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors disabled:opacity-50"><Icon name="TrashIcon" size={11} /></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {showPincodeModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
-                    <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
-                      <h3 className="font-display italic text-lg font-semibold text-foreground">{editingPincode ? 'Edit Pincode' : 'Add Pincode'}</h3>
-                      <button onClick={() => setShowPincodeModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
-                    </div>
-                    <div className="p-6 space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Pincode *</label>
-                          <input type="text" maxLength={6} value={pincodeForm.pincode} onChange={(e) => setPincodeForm((p) => ({ ...p, pincode: e.target.value.replace(/\D/g, '') }))} placeholder="6-digit pincode" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Area Name</label>
-                          <input type="text" value={pincodeForm.area_name} onChange={(e) => setPincodeForm((p) => ({ ...p, area_name: e.target.value }))} placeholder="e.g. Koramangala" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">City</label>
-                          <input type="text" value={pincodeForm.city} onChange={(e) => setPincodeForm((p) => ({ ...p, city: e.target.value }))} placeholder="e.g. Bangalore" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">State</label>
-                          <input type="text" value={pincodeForm.state} onChange={(e) => setPincodeForm((p) => ({ ...p, state: e.target.value }))} placeholder="e.g. Karnataka" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Delivery Days</label>
-                          <input type="number" min="1" value={pincodeForm.delivery_days} onChange={(e) => setPincodeForm((p) => ({ ...p, delivery_days: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Extra Charge (₹)</label>
-                          <input type="number" min="0" value={pincodeForm.extra_charge} onChange={(e) => setPincodeForm((p) => ({ ...p, extra_charge: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
-                        </div>
-                      </div>
-                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={pincodeForm.is_active} onChange={(e) => setPincodeForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" /><span className="text-sm font-semibold text-foreground">Active</span></label>
-                    </div>
-                    <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
-                      <button onClick={() => setShowPincodeModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
-                      <button disabled={savingPincode} onClick={savePincode} className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
-                        {savingPincode ? 'Saving…' : editingPincode ? 'Update' : 'Add Pincode'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Story Tab ── */}
-          {activeTab === 'story' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-display italic text-2xl font-semibold text-foreground">Our Story</h2>
-                {!editingStory && (
-                  <button onClick={() => { setStoryForm(storyContent); setEditingStory(true); }} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2">
-                    <Icon name="PencilIcon" size={14} />
-                    Edit Story
-                  </button>
-                )}
-              </div>
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                {editingStory ? (
-                  <div className="space-y-4">
-                    {[
-                      { label: 'Title', key: 'title', placeholder: 'Our Craft Story' },
-                      { label: 'Subtitle', key: 'subtitle', placeholder: 'Handcrafted with love' },
-                      { label: 'Image URL', key: 'image_url', placeholder: 'https://...' },
-                      { label: 'Image Alt Text', key: 'image_alt', placeholder: 'Describe the image' },
-                      { label: 'Quote', key: 'quote', placeholder: 'Inspiring quote…' },
-                      { label: 'Quote Author', key: 'quote_author', placeholder: 'PurelyJid' },
-                    ].map(({ label, key, placeholder }) => (
-                      <div key={key}>
-                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">{label}</label>
-                        <input type="text" value={(storyForm as any)[key] || ''} onChange={(e) => setStoryForm((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                      </div>
-                    ))}
-                    <div>
-                      <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Body</label>
-                      <textarea value={storyForm.body} onChange={(e) => setStoryForm((p) => ({ ...p, body: e.target.value }))} rows={5} className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary resize-none" />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={async () => {
-                          setSavingStory(true);
-                          try {
-                            const supabase = createClient();
-                            const { data: existing } = await supabase.from('story_content').select('id').eq('section_key', 'craft_story').single();
-                            if (existing) {
-                              await supabase.from('story_content').update({ ...storyForm, updated_at: new Date().toISOString() }).eq('section_key', 'craft_story');
-                            } else {
-                              await supabase.from('story_content').insert(storyForm);
-                            }
-                            setStoryContent(storyForm);
-                            setEditingStory(false);
-                            showToast('Story updated successfully!', 'success');
-                          } catch (err: any) { showToast(err?.message || 'Failed to save story.', 'error'); }
-                          finally { setSavingStory(false); }
-                        }}
-                        disabled={savingStory}
-                        className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
-                      >
-                        {savingStory ? 'Saving…' : 'Save Story'}
-                      </button>
-                      <button onClick={() => setEditingStory(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-1">Title</p>
-                      <p className="font-display italic text-xl font-semibold text-foreground">{storyContent.title}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-1">Subtitle</p>
-                      <p className="text-sm text-foreground">{storyContent.subtitle}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-1">Body</p>
-                      <p className="text-sm text-foreground whitespace-pre-wrap">{storyContent.body}</p>
-                    </div>
-                    {storyContent.quote && (
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-1">Quote</p>
-                        <blockquote className="border-l-4 border-primary pl-4 italic text-sm text-foreground">"{storyContent.quote}" — {storyContent.quote_author}</blockquote>
-                      </div>
-                    )}
-                    {storyContent.image_url && (
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Image</p>
-                        <img src={storyContent.image_url} alt={storyContent.image_alt} className="w-48 h-32 object-cover rounded-xl" />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── Users Tab ── */}
-          {activeTab === 'users' && (
-            <div className="space-y-4">
-              <h2 className="font-display italic text-2xl font-semibold text-foreground">Users ({users.length})</h2>
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
-                {users.length === 0 ? (
-                  <div className="px-6 py-12 text-center"><Icon name="UsersIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm text-muted-foreground">No users yet.</p></div>
-                ) : (
-                  <div className="divide-y divide-[rgba(196,120,90,0.06)]">
-                    {users.map((user) => (
-                      <div key={user.id} className="flex items-center gap-4 px-6 py-4">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                          <span className="text-sm font-bold text-primary">{(user.full_name || user.email || '?')[0].toUpperCase()}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground">{user.full_name || '—'}</p>
-                          <p className="text-xs text-muted-foreground">{user.email}</p>
-                          <p className="text-xs text-muted-foreground">Joined {new Date(user.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                        </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${user.role === 'admin' ? 'bg-primary/10 text-primary' : 'bg-gray-100 text-gray-600'}`}>{user.role || 'customer'}</span>
-                        {user.role !== 'admin' && (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const supabase = createClient();
-                                await supabase.from('user_profiles').update({ role: 'admin' }).eq('id', user.id);
-                                setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, role: 'admin' } : u));
-                                showToast('User promoted to admin.', 'success');
-                              } catch { showToast('Failed to update user role.', 'error'); }
-                            }}
-                            className="h-8 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors shrink-0"
-                          >
-                            Make Admin
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── Invoices & GST Tab ── */}
+          {/* ── Invoices Tab ── */}
           {activeTab === 'invoices' && (
             <div className="space-y-6">
               <h2 className="font-display italic text-2xl font-semibold text-foreground">Invoices & GST</h2>
+              {/* GST Settings */}
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                <h3 className="font-semibold text-foreground text-sm mb-4">GST Settings</h3>
+                <h3 className="font-semibold text-foreground mb-4 text-sm">GST Settings</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {[
                     { label: 'GSTIN', key: 'gstin', placeholder: '29ABCDE1234F1Z5' },
@@ -2383,26 +3012,67 @@ export default function AdminPage() {
                   ].map(({ label, key, placeholder }) => (
                     <div key={key}>
                       <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">{label}</label>
-                      <input type="text" value={(gstSettings as any)[key] || ''} onChange={(e) => setGstSettings((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                      <input type="text" value={(gstSettings as any)[key] || ''} onChange={(e) => setGstSettings((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                     </div>
                   ))}
                   <div>
                     <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">GST Rate (%)</label>
-                    <input type="number" min="0" max="28" value={gstSettings.gst_rate} onChange={(e) => setGstSettings((p) => ({ ...p, gst_rate: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary" />
+                    <input type="number" min="0" max="28" value={gstSettings.gst_rate} onChange={(e) => setGstSettings((p) => ({ ...p, gst_rate: Number(e.target.value) }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                   </div>
                 </div>
               </div>
+              {/* Generate Invoice */}
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                <h3 className="font-semibold text-foreground text-sm mb-4">Generate Invoice</h3>
-                <div className="flex gap-3">
-                  <select value={selectedInvoiceOrder} onChange={(e) => setSelectedInvoiceOrder(e.target.value)} className="flex-1 h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary">
-                    <option value="">Select an order…</option>
-                    {orders.map((o) => <option key={o.id} value={o.id}>#{o.order_number} — {o?.user_profiles?.full_name || 'Customer'} — ₹{(o.total / 100).toLocaleString('en-IN')}</option>)}
-                  </select>
-                  <button onClick={() => selectedInvoiceOrder && generateGSTInvoice(selectedInvoiceOrder)} disabled={!selectedInvoiceOrder || generatingInvoice} className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50 flex items-center gap-2">
-                    <Icon name="DocumentTextIcon" size={14} />
-                    {generatingInvoice ? 'Generating…' : 'Generate Invoice'}
-                  </button>
+                <h3 className="font-semibold text-foreground mb-4 text-sm">Generate GST Invoice</h3>
+                {orders.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No orders available to generate invoices.</p>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <select
+                      value={selectedInvoiceOrder}
+                      onChange={(e) => setSelectedInvoiceOrder(e.target.value)}
+                      className="flex-1 h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                    >
+                      <option value="">Select an order…</option>
+                      {orders.map((o) => (
+                        <option key={o.id} value={o.id}>#{o.order_number} — ₹{(o.total / 100).toLocaleString('en-IN')} ({o.status})</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => selectedInvoiceOrder && generateGSTInvoice(selectedInvoiceOrder)}
+                      disabled={!selectedInvoiceOrder || generatingInvoice}
+                      className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <Icon name="DocumentTextIcon" size={14} />
+                      {generatingInvoice ? 'Generating…' : 'Generate PDF'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              {/* Recent Orders for Invoicing */}
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
+                  <h3 className="font-semibold text-foreground text-sm">All Orders</h3>
+                </div>
+                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                  {orders.length === 0 ? (
+                    <div className="px-6 py-12 text-center"><p className="text-sm text-muted-foreground">No orders yet.</p></div>
+                  ) : orders.map((order) => (
+                    <div key={order.id} className="flex items-center gap-4 px-6 py-3 hover:bg-[#FAF6F0]/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground">#{order.order_number}</p>
+                        <p className="text-xs text-muted-foreground">{order?.user_profiles?.full_name || '—'} · {new Date(order.created_at).toLocaleDateString('en-IN')}</p>
+                      </div>
+                      <p className="text-sm font-bold text-foreground shrink-0">₹{(order.total / 100).toLocaleString('en-IN')}</p>
+                      <button
+                        onClick={() => generateGSTInvoice(order.id)}
+                        disabled={generatingInvoice}
+                        className="h-8 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors shrink-0"
+                      >
+                        Invoice
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -2410,66 +3080,41 @@ export default function AdminPage() {
 
           {/* ── Shop Tab ── */}
           {activeTab === 'shop' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <h2 className="font-display italic text-2xl font-semibold text-foreground">Shop Settings</h2>
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                <p className="text-sm text-muted-foreground mb-6">Manage your shop's general settings, featured products, and homepage banners.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-foreground text-sm">Quick Stats</h3>
-                    {[
-                      { label: 'Active Products', value: products.filter((p) => p.is_active).length },
-                      { label: 'Out of Stock', value: products.filter((p) => !p.in_stock).length },
-                      { label: 'Active Categories', value: categories.filter((c) => c.is_active).length },
-                      { label: 'Active Coupons', value: coupons.filter((c) => c.is_active).length },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="flex items-center justify-between py-2 border-b border-[rgba(196,120,90,0.06)]">
-                        <span className="text-sm text-muted-foreground">{label}</span>
-                        <span className="text-sm font-bold text-foreground">{value}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-foreground text-sm">Quick Actions</h3>
-                    {[
-                      { label: 'Manage Products', action: () => setActiveTab('products'), icon: 'ArchiveBoxIcon' },
-                      { label: 'Manage Categories', action: () => setActiveTab('categories'), icon: 'TagIcon' },
-                      { label: 'View Inventory', action: () => setActiveTab('inventory'), icon: 'ClipboardDocumentListIcon' },
-                      { label: 'Manage Coupons', action: () => setActiveTab('coupons'), icon: 'TicketIcon' },
-                    ].map(({ label, action, icon }) => (
-                      <button key={label} onClick={action} className="w-full flex items-center gap-3 h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] text-sm font-semibold text-foreground hover:border-primary hover:text-primary transition-colors">
-                        <Icon name={icon} size={16} className="text-muted-foreground" />
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                  <h3 className="font-semibold text-foreground mb-2 text-sm">Products</h3>
+                  <p className="text-3xl font-bold text-foreground mb-1">{products.length}</p>
+                  <p className="text-xs text-muted-foreground">{products.filter(p => p.is_active).length} active · {products.filter(p => !p.in_stock).length} out of stock</p>
+                  <button onClick={() => setActiveTab('products')} className="mt-4 h-9 px-4 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Manage Products →</button>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Brand Templates Tab ── */}
-          {activeTab === 'brand-templates' && (
-            <div className="space-y-4">
-              <h2 className="font-display italic text-2xl font-semibold text-foreground">Brand Templates</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {[
-                  { type: 'invoice', label: 'GST Invoice Template', desc: 'HTML invoice template with your branding for printing or PDF export.', icon: 'DocumentTextIcon' },
-                  { type: 'brand', label: 'Brand Kit Template', desc: 'Brand guidelines document with your colors, fonts, and logo usage.', icon: 'SwatchIcon' },
-                  { type: 'presentation', label: 'Brand Presentation', desc: 'Full brand presentation template for pitches and partnerships.', icon: 'PresentationChartLineIcon' },
-                ].map(({ type, label, desc, icon }) => (
-                  <div key={type} className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
-                      <Icon name={icon} size={18} className="text-primary" />
-                    </div>
-                    <p className="font-semibold text-foreground text-sm mb-2">{label}</p>
-                    <p className="text-xs text-muted-foreground mb-4">{desc}</p>
-                    <button onClick={() => downloadBrandTemplate(type)} className="w-full h-9 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center justify-center gap-2">
-                      <Icon name="ArrowDownTrayIcon" size={13} />
-                      Download
-                    </button>
-                  </div>
-                ))}
+                <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                  <h3 className="font-semibold text-foreground mb-2 text-sm">Categories</h3>
+                  <p className="text-3xl font-bold text-foreground mb-1">{categories.length}</p>
+                  <p className="text-xs text-muted-foreground">{categories.filter(c => c.is_active).length} active</p>
+                  <button onClick={() => setActiveTab('categories')} className="mt-4 h-9 px-4 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Manage Categories →</button>
+                </div>
+                <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                  <h3 className="font-semibold text-foreground mb-2 text-sm">Coupons</h3>
+                  <p className="text-3xl font-bold text-foreground mb-1">{coupons.length}</p>
+                  <p className="text-xs text-muted-foreground">{coupons.filter(c => c.is_active).length} active</p>
+                  <button onClick={() => setActiveTab('coupons')} className="mt-4 h-9 px-4 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Manage Coupons →</button>
+                </div>
+                <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                  <h3 className="font-semibold text-foreground mb-2 text-sm">Active Theme</h3>
+                  {themes.find(t => t.is_active) ? (
+                    <>
+                      <p className="text-lg font-bold text-foreground mb-1">{themes.find(t => t.is_active)?.name}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        {[themes.find(t => t.is_active)?.primary_color, themes.find(t => t.is_active)?.secondary_color, themes.find(t => t.is_active)?.background_color].map((color, i) => (
+                          <div key={i} className="w-5 h-5 rounded-full border border-white shadow-sm" style={{ backgroundColor: color }} />
+                        ))}
+                      </div>
+                    </>
+                  ) : <p className="text-sm text-muted-foreground">No active theme</p>}
+                  <button onClick={() => setActiveTab('themes')} className="mt-4 h-9 px-4 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Manage Themes →</button>
+                </div>
               </div>
             </div>
           )}
@@ -2477,34 +3122,271 @@ export default function AdminPage() {
           {/* ── Collections Tab ── */}
           {activeTab === 'collections' && (
             <div className="space-y-4">
-              <h2 className="font-display italic text-2xl font-semibold text-foreground">Collections</h2>
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                <p className="text-sm text-muted-foreground mb-6">Collections group products into curated sets. Manage them via Categories — each active category appears as a collection on your storefront.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {categories.filter((c) => c.is_active).map((cat) => {
-                    const catProducts = products.filter((p) => p.category_id === cat.id && p.is_active);
-                    return (
-                      <div key={cat.id} className="border border-[rgba(196,120,90,0.12)] rounded-2xl p-4">
-                        <p className="font-semibold text-foreground text-sm mb-1">{cat.name}</p>
-                        <p className="text-xs text-muted-foreground mb-3">{catProducts.length} active product{catProducts.length !== 1 ? 's' : ''}</p>
-                        <button onClick={() => setActiveTab('categories')} className="text-xs font-semibold text-primary hover:underline">Edit Collection →</button>
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Collections ({categories.filter(c => c.is_active).length} active)</h2>
+                <button
+                  onClick={() => { setEditingCategory(null); setCategoryForm({ name: '', slug: '', description: '', display_order: 0, is_active: true }); setShowCategoryModal(true); setActiveTab('categories'); }}
+                  className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2"
+                >
+                  <Icon name="PlusIcon" size={14} />
+                  Add Collection
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {categories.length === 0 ? (
+                  <div className="col-span-full bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] px-6 py-12 text-center">
+                    <Icon name="RectangleGroupIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm font-semibold text-foreground">No collections yet</p>
+                  </div>
+                ) : categories.map((cat) => {
+                  const catProducts = products.filter(p => p.category_id === cat.id);
+                  return (
+                    <div key={cat.id} className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-5 hover:shadow-card transition-shadow">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{cat.name}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{cat.slug}</p>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {cat.is_active ? 'Active' : 'Hidden'}
+                        </span>
                       </div>
-                    );
-                  })}
-                  {categories.filter((c) => c.is_active).length === 0 && (
-                    <div className="col-span-3 text-center py-8">
-                      <Icon name="TagIcon" size={28} className="text-muted-foreground mx-auto mb-3" />
-                      <p className="text-sm text-muted-foreground">No active categories. <button onClick={() => setActiveTab('categories')} className="text-primary font-semibold hover:underline">Add categories</button> to create collections.</p>
+                      {cat.description && <p className="text-xs text-muted-foreground mb-3">{cat.description}</p>}
+                      <p className="text-xs font-semibold text-foreground">{catProducts.length} product{catProducts.length !== 1 ? 's' : ''}</p>
+                      <div className="flex items-center gap-2 mt-3">
+                        <button
+                          onClick={() => { setEditingCategory(cat); setCategoryForm({ name: cat.name, slug: cat.slug, description: cat.description, display_order: cat.display_order, is_active: cat.is_active }); setShowCategoryModal(true); }}
+                          className="h-8 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const supabase = createClient();
+                              await supabase.from('categories').update({ is_active: !cat.is_active }).eq('id', cat.id);
+                              setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, is_active: !c.is_active } : c));
+                              showToast(`Collection ${!cat.is_active ? 'shown' : 'hidden'}.`, 'success');
+                            } catch { showToast('Failed to update collection.', 'error'); }
+                          }}
+                          className="h-8 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                        >
+                          {cat.is_active ? 'Hide' : 'Show'}
+                        </button>
+                      </div>
                     </div>
-                  )}
+                  );
+                })}
+              </div>
+              {/* Reuse category modal */}
+              {showCategoryModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
+                    <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
+                      <h3 className="font-display italic text-lg font-semibold text-foreground">{editingCategory ? 'Edit Collection' : 'Add Collection'}</h3>
+                      <button onClick={() => setShowCategoryModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                      {[
+                        { label: 'Name *', key: 'name', placeholder: 'e.g. Preserved Florals' },
+                        { label: 'Slug *', key: 'slug', placeholder: 'e.g. preserved-florals' },
+                        { label: 'Description', key: 'description', placeholder: 'Short description' },
+                      ].map(({ label, key, placeholder }) => (
+                        <div key={key}>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">{label}</label>
+                          <input type="text" value={(categoryForm as any)[key] || ''} onChange={(e) => setCategoryForm((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      ))}
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={categoryForm.is_active} onChange={(e) => setCategoryForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Active</span>
+                      </label>
+                    </div>
+                    <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
+                      <button onClick={() => setShowCategoryModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
+                      <button
+                        disabled={savingCategory || !categoryForm.name?.trim()}
+                        onClick={async () => {
+                          if (!categoryForm.name?.trim()) { showToast('Name is required.', 'error'); return; }
+                          setSavingCategory(true);
+                          try {
+                            const supabase = createClient();
+                            let slug = categoryForm.slug || categoryForm.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+                            const payload = { ...categoryForm, slug };
+                            if (editingCategory) {
+                              await supabase.from('categories').update(payload).eq('id', editingCategory.id);
+                              showToast('Collection updated.', 'success');
+                            } else {
+                              await supabase.from('categories').insert(payload);
+                              showToast('Collection added.', 'success');
+                            }
+                            setShowCategoryModal(false);
+                            fetchData();
+                          } catch (err: any) { showToast(err?.message || 'Failed to save.', 'error'); }
+                          finally { setSavingCategory(false); }
+                        }}
+                        className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
+                      >
+                        {savingCategory ? 'Saving…' : editingCategory ? 'Update' : 'Add'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Workshops Admin Tab ── */}
+          {activeTab === 'workshops-admin' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Workshops ({workshops.length})</h2>
+                <button onClick={openAddWorkshop} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2">
+                  <Icon name="PlusIcon" size={14} />
+                  Add Workshop
+                </button>
+              </div>
+              {/* Workshop Catalogues */}
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
+                  <h3 className="font-semibold text-foreground text-sm">Workshop Catalogues ({workshopCatalogues.length})</h3>
+                  <button onClick={openAddCatalogue} className="h-8 px-4 rounded-full bg-foreground text-[#FAF6F0] text-[10px] font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-1.5">
+                    <Icon name="PlusIcon" size={12} />
+                    Add Catalogue
+                  </button>
+                </div>
+                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                  {workshopCatalogues.length === 0 ? (
+                    <div className="px-6 py-8 text-center"><p className="text-sm text-muted-foreground">No catalogues yet.</p></div>
+                  ) : workshopCatalogues.map((cat) => (
+                    <div key={cat.id} className="flex items-center gap-4 px-6 py-3 hover:bg-[#FAF6F0]/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{cat.title}</p>
+                        <p className="text-xs text-muted-foreground">{cat.file_name} · {cat.download_count} downloads</p>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{cat.is_active ? 'Published' : 'Draft'}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => toggleCatalogueActive(cat)} className="h-7 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">{cat.is_active ? 'Unpublish' : 'Publish'}</button>
+                        <button onClick={() => openEditCatalogue(cat)} className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"><Icon name="PencilIcon" size={11} /></button>
+                        <button onClick={() => deleteCatalogue(cat.id)} disabled={deletingCatalogue === cat.id} className="w-7 h-7 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"><Icon name="TrashIcon" size={11} /></button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
+              {/* Workshops List */}
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
+                  <h3 className="font-semibold text-foreground text-sm">All Workshops</h3>
+                </div>
+                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                  {workshops.length === 0 ? (
+                    <div className="px-6 py-8 text-center"><p className="text-sm text-muted-foreground">No workshops yet.</p></div>
+                  ) : workshops.map((w) => (
+                    <div key={w.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAF6F0]/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{w.title}</p>
+                        <p className="text-xs text-muted-foreground">{w.instructor ? `By ${w.instructor}` : ''}{w.location ? ` · ${w.location}` : ''}</p>
+                        <p className="text-xs text-muted-foreground">{w.workshop_date ? new Date(w.workshop_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Date TBD'} · ₹{(w.price / 100).toLocaleString('en-IN')}</p>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${w.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{w.is_active ? 'Active' : 'Draft'}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => toggleWorkshopActive(w)} className="h-7 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">{w.is_active ? 'Unpublish' : 'Publish'}</button>
+                        <button onClick={() => openEditWorkshop(w)} className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"><Icon name="PencilIcon" size={11} /></button>
+                        <button onClick={() => deleteWorkshop(w.id)} disabled={deletingWorkshop === w.id} className="w-7 h-7 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"><Icon name="TrashIcon" size={11} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Workshop Modal */}
+              {showWorkshopModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                    <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
+                      <h3 className="font-display italic text-lg font-semibold text-foreground">{editingWorkshop ? 'Edit Workshop' : 'Add Workshop'}</h3>
+                      <button onClick={() => setShowWorkshopModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                      {[
+                        { label: 'Title *', key: 'title', placeholder: 'Workshop title' },
+                        { label: 'Instructor', key: 'instructor', placeholder: 'Instructor name' },
+                        { label: 'Location', key: 'location', placeholder: 'Venue or Online' },
+                        { label: 'Duration', key: 'duration', placeholder: 'e.g. 3 hours' },
+                      ].map(({ label, key, placeholder }) => (
+                        <div key={key}>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">{label}</label>
+                          <input type="text" value={(workshopForm as any)[key] || ''} onChange={(e) => setWorkshopForm((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      ))}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Date & Time</label>
+                          <input type="datetime-local" value={workshopForm.workshop_date} onChange={(e) => setWorkshopForm((p) => ({ ...p, workshop_date: e.target.value }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Price (paise)</label>
+                          <input type="text" inputMode="numeric" value={workshopForm.price} onChange={(e) => { const val = e.target.value.replace(/[^0-9]/g, ''); setWorkshopForm((p) => ({ ...p, price: val === '' ? 0 : Number(val) })); }} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Description</label>
+                        <textarea value={workshopForm.description} onChange={(e) => setWorkshopForm((p) => ({ ...p, description: e.target.value }))} rows={3} className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none" />
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={workshopForm.is_active} onChange={(e) => setWorkshopForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Active / Published</span>
+                      </label>
+                    </div>
+                    <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
+                      <button onClick={() => setShowWorkshopModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
+                      <button disabled={savingWorkshop} onClick={saveWorkshop} className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
+                        {savingWorkshop ? 'Saving…' : editingWorkshop ? 'Update' : 'Add Workshop'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Catalogue Modal */}
+              {showCatalogueModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+                    <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
+                      <h3 className="font-display italic text-lg font-semibold text-foreground">{editingCatalogue ? 'Edit Catalogue' : 'Add Catalogue'}</h3>
+                      <button onClick={() => setShowCatalogueModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                      {[
+                        { label: 'Title *', key: 'title', placeholder: 'Catalogue title' },
+                        { label: 'File URL *', key: 'file_url', placeholder: 'https://...' },
+                        { label: 'File Name', key: 'file_name', placeholder: 'catalogue.pdf' },
+                        { label: 'Description', key: 'description', placeholder: 'Short description' },
+                      ].map(({ label, key, placeholder }) => (
+                        <div key={key}>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">{label}</label>
+                          <input type="text" value={(catalogueForm as any)[key] || ''} onChange={(e) => setCatalogueForm((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      ))}
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={catalogueForm.is_active} onChange={(e) => setCatalogueForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Published</span>
+                      </label>
+                    </div>
+                    <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
+                      <button onClick={() => setShowCatalogueModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
+                      <button disabled={savingCatalogue} onClick={saveCatalogue} className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
+                        {savingCatalogue ? 'Saving…' : editingCatalogue ? 'Update' : 'Add Catalogue'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* ── Custom Products Admin Tab ── */}
           {activeTab === 'custom-products-admin' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="font-display italic text-2xl font-semibold text-foreground">Custom Products ({customProducts.length})</h2>
                 <button onClick={openAddCustomProduct} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2">
@@ -2513,50 +3395,59 @@ export default function AdminPage() {
                 </button>
               </div>
               <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
-                {customProducts.length === 0 ? (
-                  <div className="px-6 py-12 text-center"><Icon name="SparklesIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm font-semibold text-foreground mb-1">No custom products yet</p><button onClick={openAddCustomProduct} className="mt-2 h-9 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors">Add Custom Product</button></div>
-                ) : (
-                  <div className="divide-y divide-[rgba(196,120,90,0.06)]">
-                    {customProducts.map((cp) => (
-                      <div key={cp.id} className="flex items-center gap-4 px-6 py-4">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground">{cp.name}</p>
-                          <p className="text-xs text-muted-foreground">{cp.category} · {cp.price_range}</p>
-                        </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cp.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{cp.is_active ? 'Active' : 'Hidden'}</span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button onClick={() => openEditCustomProduct(cp)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"><Icon name="PencilIcon" size={12} /></button>
-                          <button onClick={() => deleteCustomProduct(cp.id)} disabled={deletingCustomProduct === cp.id} className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors disabled:opacity-50"><Icon name="TrashIcon" size={12} /></button>
-                        </div>
+                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                  {customProducts.length === 0 ? (
+                    <div className="px-6 py-12 text-center">
+                      <Icon name="SparklesIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
+                      <p className="text-sm font-semibold text-foreground">No custom products yet</p>
+                    </div>
+                  ) : customProducts.map((p) => (
+                    <div key={p.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAF6F0]/50 transition-colors">
+                      <div className="w-12 h-12 rounded-xl bg-[#EDE8E0] overflow-hidden shrink-0">
+                        {p.images?.[0]?.url ? <img src={p.images[0].url} alt={p.images[0].alt} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Icon name="PhotoIcon" size={20} className="text-muted-foreground" /></div>}
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{p.name}</p>
+                        <p className="text-xs text-muted-foreground">{p.category} · {p.price_range}</p>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{p.is_active ? 'Active' : 'Hidden'}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => openEditCustomProduct(p)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"><Icon name="PencilIcon" size={12} /></button>
+                        <button onClick={() => deleteCustomProduct(p.id)} disabled={deletingCustomProduct === p.id} className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"><Icon name="TrashIcon" size={12} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
               {/* Custom Enquiries */}
-              {customEnquiries.length > 0 && (
-                <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
-                  <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
-                    <h3 className="font-semibold text-foreground text-sm">Custom Enquiries ({customEnquiries.length})</h3>
-                  </div>
-                  <div className="divide-y divide-[rgba(196,120,90,0.06)]">
-                    {customEnquiries.map((enq) => (
-                      <div key={enq.id} className="flex items-start gap-4 px-6 py-4">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground">{enq.name}</p>
-                          <p className="text-xs text-muted-foreground">{enq.email} · {enq.phone}</p>
-                          <p className="text-xs text-foreground mt-1 line-clamp-2">{enq.message}</p>
-                          {enq.budget && <p className="text-xs text-muted-foreground mt-1">Budget: {enq.budget}</p>}
-                          <p className="text-xs text-muted-foreground">{new Date(enq.created_at).toLocaleDateString('en-IN')}</p>
-                        </div>
-                        <select value={enq.status} onChange={(e) => updateEnquiryStatus(enq.id, e.target.value)} className="h-8 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-foreground bg-white focus:outline-none focus:border-primary shrink-0">
-                          {['new', 'contacted', 'quoted', 'confirmed', 'completed', 'cancelled'].map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
+                  <h3 className="font-semibold text-foreground text-sm">Custom Enquiries ({customEnquiries.length})</h3>
                 </div>
-              )}
+                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                  {customEnquiries.length === 0 ? (
+                    <div className="px-6 py-8 text-center"><p className="text-sm text-muted-foreground">No enquiries yet.</p></div>
+                  ) : customEnquiries.map((enq) => (
+                    <div key={enq.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAF6F0]/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{enq.name}</p>
+                        <p className="text-xs text-muted-foreground">{enq.email} · {enq.phone}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{enq.message}</p>
+                        {enq.budget && <p className="text-xs text-muted-foreground">Budget: {enq.budget}</p>}
+                        <p className="text-xs text-muted-foreground">{new Date(enq.created_at).toLocaleDateString('en-IN')}</p>
+                      </div>
+                      <select
+                        value={enq.status}
+                        onChange={(e) => updateEnquiryStatus(enq.id, e.target.value)}
+                        className="h-8 px-2 rounded-full text-[10px] font-bold uppercase tracking-[0.1em] border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] focus:outline-none focus:border-primary cursor-pointer"
+                      >
+                        {['new', 'contacted', 'in_progress', 'completed', 'cancelled'].map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Custom Product Modal */}
               {showCustomProductModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
                   <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -2565,33 +3456,34 @@ export default function AdminPage() {
                       <button onClick={() => setShowCustomProductModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
                     </div>
                     <div className="p-6 space-y-4">
+                      {[
+                        { label: 'Name *', key: 'name', placeholder: 'Product name' },
+                        { label: 'Price Range', key: 'price_range', placeholder: 'e.g. ₹500 – ₹2000' },
+                        { label: 'Catalogue URL', key: 'catalogue_url', placeholder: 'https://...' },
+                      ].map(({ label, key, placeholder }) => (
+                        <div key={key}>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">{label}</label>
+                          <input type="text" value={(customProductForm as any)[key] || ''} onChange={(e) => setCustomProductForm((p) => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      ))}
                       <div>
-                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Product Name *</label>
-                        <input type="text" value={customProductForm.name} onChange={(e) => setCustomProductForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Custom Preserved Floral Frame" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Category</label>
-                          <input type="text" value={customProductForm.category} onChange={(e) => setCustomProductForm((p) => ({ ...p, category: e.target.value }))} placeholder="e.g. Preserved Florals" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Price Range</label>
-                          <input type="text" value={customProductForm.price_range} onChange={(e) => setCustomProductForm((p) => ({ ...p, price_range: e.target.value }))} placeholder="e.g. ₹500 – ₹2000" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                        </div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Category</label>
+                        <select value={customProductForm.category} onChange={(e) => setCustomProductForm((p) => ({ ...p, category: e.target.value }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary">
+                          {['Preserved Florals', 'Resin Art', 'Custom Jewellery', 'Home Decor', 'Gifts', 'Other'].map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
                       </div>
                       <div>
                         <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Description</label>
-                        <textarea value={customProductForm.description} onChange={(e) => setCustomProductForm((p) => ({ ...p, description: e.target.value }))} rows={3} className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary resize-none" />
+                        <textarea value={customProductForm.description} onChange={(e) => setCustomProductForm((p) => ({ ...p, description: e.target.value }))} rows={3} className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-none" />
                       </div>
-                      <div>
-                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Catalogue URL</label>
-                        <input type="text" value={customProductForm.catalogue_url} onChange={(e) => setCustomProductForm((p) => ({ ...p, catalogue_url: e.target.value }))} placeholder="https://..." className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                      </div>
-                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={customProductForm.is_active} onChange={(e) => setCustomProductForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" /><span className="text-sm font-semibold text-foreground">Active</span></label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={customProductForm.is_active} onChange={(e) => setCustomProductForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Active</span>
+                      </label>
                     </div>
                     <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
                       <button onClick={() => setShowCustomProductModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
-                      <button disabled={savingCustomProduct || !customProductForm.name.trim()} onClick={saveCustomProduct} className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
+                      <button disabled={savingCustomProduct} onClick={saveCustomProduct} className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
                         {savingCustomProduct ? 'Saving…' : editingCustomProduct ? 'Update' : 'Add Product'}
                       </button>
                     </div>
@@ -2601,564 +3493,501 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ── Google Reviews Tab ── */}
-          {activeTab === 'google-reviews' && (
+          {/* ── Brand Templates Tab ── */}
+          {activeTab === 'brand-templates' && (
             <div className="space-y-6">
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                <h2 className="font-display italic text-xl font-semibold text-foreground mb-1">Google Reviews</h2>
-                <p className="text-xs text-muted-foreground mb-6">Fetch and display your Google Business reviews on your storefront.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Google Places API Key</label>
-                    <input
-                      type="text"
-                      value={googleApiKey}
-                      onChange={(e) => setGoogleApiKey(e.target.value)}
-                      placeholder="AIza..."
-                      className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Google Place ID</label>
-                    <input
-                      type="text"
-                      value={googlePlaceId}
-                      onChange={(e) => setGooglePlaceId(e.target.value)}
-                      placeholder="ChIJ..."
-                      className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                </div>
-                <button
-                  onClick={async () => {
-                    if (!googleApiKey || !googlePlaceId) { setGoogleReviewsError('Please enter both API Key and Place ID.'); return; }
-                    setFetchingReviews(true);
-                    setGoogleReviewsError('');
-                    setGooglePlaceData(null);
-                    try {
-                      const res = await fetch(`/api/google-places?placeId=${encodeURIComponent(googlePlaceId)}&apiKey=${encodeURIComponent(googleApiKey)}`);
-                      const data = await res.json();
-                      if (!res.ok) throw new Error(data.error || 'Failed to fetch reviews');
-                      setGooglePlaceData(data);
-                    } catch (err: any) {
-                      setGoogleReviewsError(err.message || 'Failed to fetch reviews.');
-                    } finally { setFetchingReviews(false); }
-                  }}
-                  disabled={fetchingReviews}
-                  className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
-                >
-                  {fetchingReviews ? 'Fetching…' : 'Fetch Reviews'}
-                </button>
-                {googleReviewsError && (
-                  <p className="mt-3 text-xs text-red-600 font-medium">{googleReviewsError}</p>
-                )}
-              </div>
-              {googlePlaceData && (
-                <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                  <div className="flex items-center gap-3 mb-4">
+              <h2 className="font-display italic text-2xl font-semibold text-foreground">Brand Templates</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  { type: 'invoice', label: 'Invoice Template', icon: 'DocumentTextIcon', desc: 'Download a customizable GST invoice HTML template for PurelyJid.' },
+                  { type: 'brand', label: 'Brand Template', icon: 'SwatchIcon', desc: 'Download a brand identity HTML template with colors, fonts, and logo guidelines.' },
+                  { type: 'presentation', label: 'Brand Presentation', icon: 'PresentationChartLineIcon', desc: 'Download a brand presentation template for pitches and collaborations.' },
+                ].map((item) => (
+                  <div key={item.type} className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6 flex flex-col gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <Icon name={item.icon} size={18} className="text-primary" />
+                    </div>
                     <div>
-                      <p className="font-semibold text-foreground">{googlePlaceData.name}</p>
-                      <p className="text-xs text-muted-foreground">{googlePlaceData.formatted_address}</p>
+                      <p className="text-sm font-semibold text-foreground mb-1">{item.label}</p>
+                      <p className="text-xs text-muted-foreground">{item.desc}</p>
                     </div>
-                    <div className="ml-auto text-right">
-                      <p className="text-2xl font-bold text-foreground">{googlePlaceData.rating} <span className="text-amber-400 text-xl">★</span></p>
-                      <p className="text-xs text-muted-foreground">{googlePlaceData.user_ratings_total?.toLocaleString()} total reviews</p>
-                    </div>
+                    <button
+                      onClick={() => downloadBrandTemplate(item.type)}
+                      className="mt-auto h-9 px-4 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2"
+                    >
+                      <Icon name="ArrowDownTrayIcon" size={13} />
+                      Download
+                    </button>
                   </div>
-                  {googlePlaceData.reviews && googlePlaceData.reviews.length > 0 ? (
-                    <div className="space-y-4">
-                      {googlePlaceData.reviews.map((review: GoogleReview, i: number) => (
-                        <div key={i} className="border-t border-[rgba(196,120,90,0.08)] pt-4">
-                          <div className="flex items-start gap-3">
-                            {review.profile_photo_url && (
-                              <img
-                                src={review.profile_photo_url}
-                                alt={review.author_name}
-                                className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-                              />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-semibold text-foreground truncate">{review.author_name}</p>
-                                <span className="text-xs text-amber-500 font-bold ml-2 flex-shrink-0">{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</span>
-                              </div>
-                              <p className="text-[10px] text-muted-foreground mb-1">{review.relative_time_description}</p>
-                              <p className="text-xs text-muted-foreground leading-relaxed">{review.text}</p>
-                            </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Users Tab ── */}
+          {activeTab === 'users' && (
+            <div className="space-y-4">
+              <h2 className="font-display italic text-2xl font-semibold text-foreground">Users ({users.length})</h2>
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                  {users.length === 0 ? (
+                    <div className="px-6 py-12 text-center">
+                      <Icon name="UsersIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
+                      <p className="text-sm font-semibold text-foreground">No users yet</p>
+                    </div>
+                  ) : users.map((user) => (
+                    <div key={user.id} className="flex items-center gap-4 px-6 py-4 hover:bg-[#FAF6F0]/50 transition-colors">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-sm font-bold text-primary">{(user.full_name || user.email || '?')[0].toUpperCase()}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{user.full_name || '—'}</p>
+                        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(user.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${user.role === 'admin' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
+                        {user.role || 'customer'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Shipping Policy Tab ── */}
+          {activeTab === 'shipping-policy' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Shipping Policy</h2>
+                <a href="/shipping" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                  <Icon name="ArrowTopRightOnSquareIcon" size={13} />
+                  View Live Page
+                </a>
+              </div>
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                <p className="text-xs text-muted-foreground mb-4">Edit the content of your Shipping Policy page. Use plain text or basic HTML.</p>
+                <textarea
+                  value={shippingContent}
+                  onChange={(e) => setShippingContent(e.target.value)}
+                  rows={20}
+                  placeholder="Enter your shipping policy content here..."
+                  className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-y font-mono"
+                />
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Changes are saved to the database and reflected live on the Shipping Policy page.</p>
+                  <button
+                    onClick={async () => {
+                      setSavingShipping(true);
+                      try {
+                        const supabase = createClient();
+                        await supabase.from('story_content').upsert({ section_key: 'shipping_policy', title: 'Shipping Policy', body: shippingContent, subtitle: '', image_url: '', image_alt: '', quote: '', quote_author: '', extra_data: {} }, { onConflict: 'section_key' });
+                        showToast('Shipping policy saved!', 'success');
+                      } catch (err: any) {
+                        showToast(err?.message || 'Failed to save.', 'error');
+                      } finally { setSavingShipping(false); }
+                    }}
+                    disabled={savingShipping}
+                    className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
+                  >
+                    {savingShipping ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Privacy Policy Tab ── */}
+          {activeTab === 'privacy-policy' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Privacy Policy</h2>
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                  <Icon name="ArrowTopRightOnSquareIcon" size={13} />
+                  View Live Page
+                </a>
+              </div>
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                <p className="text-xs text-muted-foreground mb-4">Edit the content of your Privacy Policy page. Use plain text or basic HTML.</p>
+                <textarea
+                  value={privacyContent}
+                  onChange={(e) => setPrivacyContent(e.target.value)}
+                  rows={20}
+                  placeholder="Enter your privacy policy content here..."
+                  className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-y font-mono"
+                />
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Changes are saved to the database and reflected live on the Privacy Policy page.</p>
+                  <button
+                    onClick={async () => {
+                      setSavingPrivacy(true);
+                      try {
+                        const supabase = createClient();
+                        await supabase.from('story_content').upsert({ section_key: 'privacy_policy', title: 'Privacy Policy', body: privacyContent, subtitle: '', image_url: '', image_alt: '', quote: '', quote_author: '', extra_data: {} }, { onConflict: 'section_key' });
+                        showToast('Privacy policy saved!', 'success');
+                      } catch (err: any) {
+                        showToast(err?.message || 'Failed to save.', 'error');
+                      } finally { setSavingPrivacy(false); }
+                    }}
+                    disabled={savingPrivacy}
+                    className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
+                  >
+                    {savingPrivacy ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Terms & Conditions Tab ── */}
+          {activeTab === 'terms-conditions' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Terms &amp; Conditions</h2>
+                <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                  <Icon name="ArrowTopRightOnSquareIcon" size={13} />
+                  View Live Page
+                </a>
+              </div>
+              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                <p className="text-xs text-muted-foreground mb-4">Edit the content of your Terms &amp; Conditions page. Use plain text or basic HTML.</p>
+                <textarea
+                  value={termsContent}
+                  onChange={(e) => setTermsContent(e.target.value)}
+                  rows={20}
+                  placeholder="Enter your terms and conditions content here..."
+                  className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary resize-y font-mono"
+                />
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Changes are saved to the database and reflected live on the Terms &amp; Conditions page.</p>
+                  <button
+                    onClick={async () => {
+                      setSavingTerms(true);
+                      try {
+                        const supabase = createClient();
+                        await supabase.from('story_content').upsert({ section_key: 'terms_conditions', title: 'Terms & Conditions', body: termsContent, subtitle: '', image_url: '', image_alt: '', quote: '', quote_author: '', extra_data: {} }, { onConflict: 'section_key' });
+                        showToast('Terms & Conditions saved!', 'success');
+                      } catch (err: any) {
+                        showToast(err?.message || 'Failed to save.', 'error');
+                      } finally { setSavingTerms(false); }
+                    }}
+                    disabled={savingTerms}
+                    className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
+                  >
+                    {savingTerms ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Shipping Charges Tab ── */}
+          {activeTab === 'shipping-charges' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display italic text-2xl font-semibold text-foreground">Shipping Charges</h2>
+              </div>
+
+              {/* Sub-tabs */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShippingTab('pincodes')}
+                  className={`h-9 px-5 rounded-full text-xs font-semibold uppercase tracking-[0.15em] transition-colors ${shippingTab === 'pincodes' ? 'bg-foreground text-[#FAF6F0]' : 'border border-[rgba(196,120,90,0.2)] text-muted-foreground hover:border-primary hover:text-primary'}`}
+                >
+                  By Pincode ({pincodes.length})
+                </button>
+                <button
+                  onClick={() => setShippingTab('zones')}
+                  className={`h-9 px-5 rounded-full text-xs font-semibold uppercase tracking-[0.15em] transition-colors ${shippingTab === 'zones' ? 'bg-foreground text-[#FAF6F0]' : 'border border-[rgba(196,120,90,0.2)] text-muted-foreground hover:border-primary hover:text-primary'}`}
+                >
+                  By Zone / Area / City ({shippingZones.length})
+                </button>
+              </div>
+
+              {/* How it works info */}
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-xs text-blue-700">
+                <p className="font-semibold mb-1">How shipping charge lookup works at checkout:</p>
+                <ol className="list-decimal list-inside space-y-0.5">
+                  <li>First checks <strong>Pincode-specific</strong> rules (exact match)</li>
+                  <li>Then checks <strong>Zone rules</strong> (by city/area/state) in priority order</li>
+                  <li>Falls back to <strong>default</strong>: free above ₹1,250, else ₹9.99</li>
+                </ol>
+              </div>
+
+              {/* ── Pincode Sub-tab ── */}
+              {shippingTab === 'pincodes' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Set specific shipping charges for individual pincodes.</p>
+                    <button onClick={openAddPincode} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2 text-xs">
+                      <Icon name="PlusIcon" size={14} />
+                      Add Pincode
+                    </button>
+                  </div>
+
+                  {/* Bulk Import */}
+                  <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
+                    <h3 className="font-semibold text-foreground mb-2 text-sm">Bulk Import Pincodes</h3>
+                    <p className="mb-2 text-xs text-muted-foreground">Paste one 6-digit pincode per line to add multiple at once (with default settings).</p>
+                    <textarea
+                      className="w-full h-24 px-4 py-2 border border-dashed border-[rgba(196,120,90,0.3)] rounded-xl resize-none mb-2 text-sm"
+                      placeholder={"110001\n400001\n560001"}
+                      value={bulkPincodes}
+                      onChange={(e) => setBulkPincodes(e.target.value)}
+                    />
+                    <button
+                      onClick={importBulkPincodes}
+                      disabled={importingPincodes || !bulkPincodes.trim()}
+                      className="px-4 py-2 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.1em] hover:bg-primary transition disabled:opacity-50"
+                    >
+                      {importingPincodes ? 'Importing…' : 'Import Pincodes'}
+                    </button>
+                  </div>
+
+                  {/* Search + List */}
+                  <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                    <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
+                      <input
+                        type="text"
+                        className="w-full h-9 px-4 rounded-full border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                        placeholder="Search pincode or area…"
+                        value={pincodeSearch}
+                        onChange={(e) => setPincodeSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                      {pincodes.filter((p) => !pincodeSearch || p.pincode.includes(pincodeSearch) || p.area_name.toLowerCase().includes(pincodeSearch.toLowerCase()) || p.city.toLowerCase().includes(pincodeSearch.toLowerCase())).length === 0 ? (
+                        <div className="px-6 py-12 text-center"><Icon name="MapPinIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm text-muted-foreground">No pincodes found.</p></div>
+                      ) : pincodes.filter((p) => !pincodeSearch || p.pincode.includes(pincodeSearch) || p.area_name.toLowerCase().includes(pincodeSearch.toLowerCase()) || p.city.toLowerCase().includes(pincodeSearch.toLowerCase())).map((pin) => (
+                        <div key={pin.id} className="flex items-center gap-4 px-6 py-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-foreground font-mono">{pin.pincode}</p>
+                            <p className="text-xs text-muted-foreground">{[pin.area_name, pin.city, pin.state].filter(Boolean).join(', ') || 'No area details'}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {pin.delivery_days} day{pin.delivery_days !== 1 ? 's' : ''} delivery
+                              {pin.extra_charge > 0 ? ` · Charge: ₹${(pin.extra_charge / 100).toLocaleString('en-IN')}` : ' · Free shipping'}
+                              {pin.free_shipping_above && pin.free_shipping_above > 0 ? ` (free above ₹${(pin.free_shipping_above / 100).toLocaleString('en-IN')})` : ''}
+                            </p>
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pin.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{pin.is_active ? 'Active' : 'Off'}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button onClick={() => togglePincodeActive(pin)} className="h-7 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">{pin.is_active ? 'Disable' : 'Enable'}</button>
+                            <button onClick={() => openEditPincode(pin)} className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"><Icon name="PencilIcon" size={11} /></button>
+                            <button onClick={() => deletePincode(pin.id)} disabled={deletingPincode === pin.id} className="w-7 h-7 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"><Icon name="TrashIcon" size={11} /></button>
                           </div>
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground text-center py-4">No reviews found for this place.</p>
-                  )}
+                  </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ── Vyaapar Tab ── */}
-          {activeTab === 'vyaapar' && (
-            <div className="space-y-6">
-              {/* Export Section */}
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                <h2 className="font-display italic text-xl font-semibold text-foreground mb-1">Export to Vyaapar</h2>
-                <p className="text-xs text-muted-foreground mb-6">Download your orders or invoices in Vyaapar-compatible CSV format.</p>
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={exportOrdersVyaapar}
-                    disabled={exportingCsv}
-                    className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50 flex items-center gap-2"
-                  >
-                    <Icon name="DocumentArrowDownIcon" size={14} />
-                    {exportingCsv ? 'Exporting…' : 'Export Orders CSV'}
-                  </button>
-                  <button
-                    onClick={exportInvoicesVyaapar}
-                    disabled={exportingCsv}
-                    className="h-10 px-6 rounded-full border border-[rgba(196,120,90,0.2)] text-foreground text-xs font-semibold uppercase tracking-[0.15em] hover:border-primary hover:text-primary transition-colors disabled:opacity-50 flex items-center gap-2"
-                  >
-                    <Icon name="DocumentTextIcon" size={14} />
-                    {exportingCsv ? 'Exporting…' : 'Export Invoices CSV'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Import Stock Section */}
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                <h2 className="font-display italic text-xl font-semibold text-foreground mb-1">Import Stock from Vyaapar</h2>
-                <p className="text-xs text-muted-foreground mb-6">Upload a Vyaapar stock export CSV to automatically sync inventory quantities.</p>
-                <div
-                  onClick={() => vyaaparInputRef.current?.click()}
-                  className="border-2 border-dashed border-[rgba(196,120,90,0.3)] rounded-2xl p-8 text-center cursor-pointer hover:border-primary transition-colors mb-4"
-                >
-                  <Icon name="DocumentArrowUpIcon" size={28} className="text-muted-foreground mx-auto mb-3" />
-                  <p className="text-sm font-semibold text-foreground mb-1">{vyaaparFile ? vyaaparFile.name : 'Click to upload Vyaapar CSV'}</p>
-                  <p className="text-xs text-muted-foreground">Columns: Item Name, SKU/Code, Quantity/Stock/Closing Stock</p>
-                  <input ref={vyaaparInputRef} type="file" accept=".csv" className="hidden" onChange={handleVyaaparFileChange} />
-                </div>
-                {vyaaparErrors.length > 0 && (
-                  <div className="mb-4 p-4 rounded-xl bg-red-50 border border-red-200">
-                    {vyaaparErrors.map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
+              {/* ── Zones Sub-tab ── */}
+              {shippingTab === 'zones' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Define shipping charges by city, area, state, or distance range.</p>
+                    <button onClick={openAddZone} className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2 text-xs">
+                      <Icon name="PlusIcon" size={14} />
+                      Add Zone
+                    </button>
                   </div>
-                )}
-                {vyaaparPreview.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-xs font-semibold text-foreground mb-2">Preview ({vyaaparPreview.filter(v => v.matched).length} matched / {vyaaparPreview.length} total)</p>
-                    <div className="rounded-xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
-                      <table className="w-full text-xs">
-                        <thead className="bg-[#FAF6F0]">
-                          <tr>
-                            <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Item Name</th>
-                            <th className="px-4 py-2 text-left font-semibold text-muted-foreground">SKU</th>
-                            <th className="px-4 py-2 text-right font-semibold text-muted-foreground">Qty</th>
-                            <th className="px-4 py-2 text-center font-semibold text-muted-foreground">Match</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[rgba(196,120,90,0.06)]">
-                          {vyaaparPreview.map((row, i) => (
-                            <tr key={i} className={row.matched ? '' : 'opacity-50'}>
-                              <td className="px-4 py-2 text-foreground">{row.name}</td>
-                              <td className="px-4 py-2 text-muted-foreground">{row.sku || '—'}</td>
-                              <td className="px-4 py-2 text-right font-semibold text-foreground">{row.qty}</td>
-                              <td className="px-4 py-2 text-center">{row.matched ? '✅' : '❌'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+
+                  {/* Search + List */}
+                  <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
+                    <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
+                      <input
+                        type="text"
+                        className="w-full h-9 px-4 rounded-full border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary"
+                        placeholder="Search zone name, city, area…"
+                        value={zoneSearch}
+                        onChange={(e) => setZoneSearch(e.target.value)}
+                      />
                     </div>
-                    <button
-                      onClick={importVyaaparStock}
-                      disabled={importingVyaapar || vyaaparPreview.filter(v => v.matched).length === 0}
-                      className="mt-4 h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
-                    >
-                      {importingVyaapar ? 'Importing…' : `Import ${vyaaparPreview.filter(v => v.matched).length} Products`}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── Workshops Admin Tab ── */}
-          {activeTab === 'workshops-admin' && (
-            <div className="space-y-6">
-              {/* Header */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-display italic text-2xl font-semibold text-foreground">Workshops</h2>
-                  <p className="text-xs text-muted-foreground mt-1">Manage workshop details and upload catalogues for customers to download.</p>
-                </div>
-                <button
-                  onClick={openAddWorkshop}
-                  className="h-10 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors flex items-center gap-2"
-                >
-                  <Icon name="PlusIcon" size={14} />
-                  Add Workshop
-                </button>
-              </div>
-
-              {/* Catalogue Upload Section */}
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Icon name="DocumentArrowUpIcon" size={16} className="text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground text-sm">Upload Workshop Catalogue</h3>
-                    <p className="text-xs text-muted-foreground">Upload PDF or image catalogues that customers can download</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Catalogue Title *</label>
-                    <input
-                      type="text"
-                      value={catalogueForm.title}
-                      onChange={(e) => setCatalogueForm((p) => ({ ...p, title: e.target.value }))}
-                      placeholder="e.g. Summer Resin Workshop 2026"
-                      className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Thumbnail URL (optional)</label>
-                    <input
-                      type="text"
-                      value={catalogueForm.thumbnail_url}
-                      onChange={(e) => setCatalogueForm((p) => ({ ...p, thumbnail_url: e.target.value }))}
-                      placeholder="https://..."
-                      className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                </div>
-                <div className="mb-4">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Description</label>
-                  <textarea
-                    value={catalogueForm.description}
-                    onChange={(e) => setCatalogueForm((p) => ({ ...p, description: e.target.value }))}
-                    placeholder="Brief description of this catalogue..."
-                    rows={2}
-                    className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
-                  />
-                </div>
-                <div className="mb-4">
-                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">File URL (PDF or Image) *</label>
-                  <div className="flex gap-3">
-                    <input
-                      type="text"
-                      value={catalogueForm.file_url}
-                      onChange={(e) => setCatalogueForm((p) => ({ ...p, file_url: e.target.value }))}
-                      placeholder="https://... (direct link to PDF or image)"
-                      className="flex-1 h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                    />
-                    <button
-                      onClick={() => workshopCatalogueInputRef.current?.click()}
-                      className="h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center gap-2 whitespace-nowrap"
-                    >
-                      <Icon name="PaperClipIcon" size={14} />
-                      Select File
-                    </button>
-                    <input
-                      ref={workshopCatalogueInputRef}
-                      type="file"
-                      accept=".pdf,image/*"
-                      className="hidden"
-                      onChange={handleCatalogueFileSelect}
-                    />
-                  </div>
-                  {workshopCatalogueFile && (
-                    <p className="mt-2 text-xs text-primary font-medium flex items-center gap-1.5">
-                      <Icon name="DocumentCheckIcon" size={12} />
-                      Selected: {workshopCatalogueFile.name} ({(workshopCatalogueFile.size / 1024).toFixed(1)} KB) — paste the hosted URL above after uploading
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={saveCatalogue}
-                    disabled={savingCatalogue || !catalogueForm.title.trim() || !catalogueForm.file_url.trim()}
-                    className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50 flex items-center gap-2"
-                  >
-                    <Icon name="CloudArrowUpIcon" size={14} />
-                    {savingCatalogue ? 'Saving…' : 'Save Catalogue'}
-                  </button>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={catalogueForm.is_active}
-                      onChange={(e) => setCatalogueForm((p) => ({ ...p, is_active: e.target.checked }))}
-                      className="w-4 h-4 rounded border-[rgba(196,120,90,0.3)] accent-primary"
-                    />
-                    <span className="text-xs font-semibold text-muted-foreground">Publish immediately</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Catalogues List */}
-              {workshopCatalogues.length > 0 && (
-                <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
-                  <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)]">
-                    <h3 className="font-semibold text-foreground text-sm">Uploaded Catalogues ({workshopCatalogues.length})</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">Customers can download these from the Workshops page</p>
-                  </div>
-                  <div className="divide-y divide-[rgba(196,120,90,0.06)]">
-                    {workshopCatalogues.map((cat) => (
-                      <div key={cat.id} className="flex items-center gap-4 px-6 py-4">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                          <Icon name="DocumentTextIcon" size={18} className="text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate">{cat.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">{cat.file_name || cat.file_url}</p>
-                          <div className="flex items-center gap-3 mt-1">
-                            <span className={`text-[10px] font-bold uppercase tracking-[0.1em] px-2 py-0.5 rounded-full ${cat.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                              {cat.is_active ? 'Published' : 'Draft'}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">{cat.download_count} downloads</span>
+                    <div className="divide-y divide-[rgba(196,120,90,0.06)]">
+                      {shippingZones.filter((z) => !zoneSearch || z.zone_name.toLowerCase().includes(zoneSearch.toLowerCase()) || z.city.toLowerCase().includes(zoneSearch.toLowerCase()) || z.area_keywords.toLowerCase().includes(zoneSearch.toLowerCase())).length === 0 ? (
+                        <div className="px-6 py-12 text-center"><Icon name="MapIcon" size={32} className="text-muted-foreground mx-auto mb-3" /><p className="text-sm text-muted-foreground">No zones defined yet.</p></div>
+                      ) : shippingZones.filter((z) => !zoneSearch || z.zone_name.toLowerCase().includes(zoneSearch.toLowerCase()) || z.city.toLowerCase().includes(zoneSearch.toLowerCase()) || z.area_keywords.toLowerCase().includes(zoneSearch.toLowerCase())).map((zone) => (
+                        <div key={zone.id} className="flex items-center gap-4 px-6 py-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-bold text-foreground">{zone.zone_name}</p>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 capitalize">{zone.zone_type}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {zone.zone_type === 'city' && zone.city && `City: ${zone.city}`}
+                              {zone.zone_type === 'state' && zone.state && `State: ${zone.state}`}
+                              {zone.zone_type === 'area' && zone.area_keywords && `Areas: ${zone.area_keywords}`}
+                              {zone.zone_type === 'distance' && `Distance: ${zone.min_distance_km}–${zone.max_distance_km} km`}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Charge: {zone.shipping_charge === 0 ? 'Free' : `₹${(zone.shipping_charge / 100).toLocaleString('en-IN')}`}
+                              {zone.free_shipping_above > 0 ? ` (free above ₹${(zone.free_shipping_above / 100).toLocaleString('en-IN')})` : ''}
+                              {' · '}{zone.delivery_days} day{zone.delivery_days !== 1 ? 's' : ''}
+                              {' · '}Priority: {zone.priority}
+                            </p>
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${zone.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{zone.is_active ? 'Active' : 'Off'}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button onClick={() => toggleZoneActive(zone)} className="h-7 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">{zone.is_active ? 'Disable' : 'Enable'}</button>
+                            <button onClick={() => openEditZone(zone)} className="w-7 h-7 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"><Icon name="PencilIcon" size={11} /></button>
+                            <button onClick={() => deleteZone(zone.id)} disabled={deletingZone === zone.id} className="w-7 h-7 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors"><Icon name="TrashIcon" size={11} /></button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <a href={cat.file_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-primary hover:underline">
-                            <Icon name="ArrowDownTrayIcon" size={11} />
-                            Preview
-                          </a>
-                          <button onClick={() => toggleCatalogueActive(cat)} className="h-8 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-                            {cat.is_active ? 'Unpublish' : 'Publish'}
-                          </button>
-                          <button onClick={() => openEditCatalogue(cat)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-                            <Icon name="PencilIcon" size={12} />
-                          </button>
-                          <button onClick={() => deleteCatalogue(cat.id)} disabled={deletingCatalogue === cat.id} className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors disabled:opacity-50">
-                            <Icon name="TrashIcon" size={12} />
-                          </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Pincode Modal ── */}
+              {showPincodeModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+                    <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
+                      <h3 className="font-display italic text-lg font-semibold text-foreground">{editingPincode ? 'Edit Pincode' : 'Add Pincode'}</h3>
+                      <button onClick={() => setShowPincodeModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Pincode *</label>
+                        <input type="text" maxLength={6} value={pincodeForm.pincode} onChange={(e) => setPincodeForm((p) => ({ ...p, pincode: e.target.value.replace(/\D/g, '') }))} placeholder="6-digit pincode" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm font-mono focus:outline-none focus:border-primary" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Area Name</label>
+                          <input type="text" value={pincodeForm.area_name} onChange={(e) => setPincodeForm((p) => ({ ...p, area_name: e.target.value }))} placeholder="e.g. Bandra West" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">City</label>
+                          <input type="text" value={pincodeForm.city} onChange={(e) => setPincodeForm((p) => ({ ...p, city: e.target.value }))} placeholder="e.g. Mumbai" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                         </div>
                       </div>
-                    ))}
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">State</label>
+                        <input type="text" value={pincodeForm.state} onChange={(e) => setPincodeForm((p) => ({ ...p, state: e.target.value }))} placeholder="e.g. Maharashtra" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Shipping Charge (₹)</label>
+                          <input type="number" min={0} value={pincodeForm.extra_charge / 100} onChange={(e) => setPincodeForm((p) => ({ ...p, extra_charge: Math.round(parseFloat(e.target.value || '0') * 100) }))} placeholder="0 = Free" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Delivery Days</label>
+                          <input type="number" min={1} value={pincodeForm.delivery_days} onChange={(e) => setPincodeForm((p) => ({ ...p, delivery_days: parseInt(e.target.value || '3') }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Free Shipping Above (₹) — 0 = never free</label>
+                        <input type="number" min={0} value={(pincodeForm as any).free_shipping_above ? (pincodeForm as any).free_shipping_above / 100 : 0} onChange={(e) => setPincodeForm((p) => ({ ...p, free_shipping_above: Math.round(parseFloat(e.target.value || '0') * 100) } as any))} placeholder="e.g. 1250" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={pincodeForm.is_active} onChange={(e) => setPincodeForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Active</span>
+                      </label>
+                    </div>
+                    <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
+                      <button onClick={() => setShowPincodeModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
+                      <button disabled={savingPincode} onClick={savePincode} className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
+                        {savingPincode ? 'Saving…' : editingPincode ? 'Update' : 'Add Pincode'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Workshops List */}
-              <div className="bg-white rounded-2xl border border-[rgba(196,120,90,0.12)] overflow-hidden">
-                <div className="px-6 py-4 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-foreground text-sm">Workshop Events ({workshops.length})</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">Each workshop can be linked to a downloadable catalogue</p>
-                  </div>
-                  <button onClick={openAddWorkshop} className="h-8 px-4 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center gap-1.5">
-                    <Icon name="PlusIcon" size={12} />
-                    Add
-                  </button>
-                </div>
-                {workshops.length === 0 ? (
-                  <div className="px-6 py-12 text-center">
-                    <Icon name="AcademicCapIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
-                    <p className="text-sm font-semibold text-foreground mb-1">No workshops yet</p>
-                    <p className="text-xs text-muted-foreground mb-4">Add your first workshop event to get started.</p>
-                    <button onClick={openAddWorkshop} className="h-9 px-5 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors">Add Workshop</button>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-[rgba(196,120,90,0.06)]">
-                    {workshops.map((w) => {
-                      const linkedCatalogue = workshopCatalogues.find((c) => c.id === w.catalogue_id);
-                      return (
-                        <div key={w.id} className="flex items-start gap-4 px-6 py-5">
-                          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                            <Icon name="AcademicCapIcon" size={18} className="text-primary" />
+              {/* ── Zone Modal ── */}
+              {showZoneModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                    <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
+                      <h3 className="font-display italic text-lg font-semibold text-foreground">{editingZone ? 'Edit Shipping Zone' : 'Add Shipping Zone'}</h3>
+                      <button onClick={() => setShowZoneModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Icon name="XMarkIcon" size={16} /></button>
+                    </div>
+                    <div className="p-6 space-y-4">
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Zone Name *</label>
+                        <input type="text" value={zoneForm.zone_name} onChange={(e) => setZoneForm((p) => ({ ...p, zone_name: e.target.value }))} placeholder="e.g. Mumbai Local, South India, etc." className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Zone Type</label>
+                        <select value={zoneForm.zone_type} onChange={(e) => setZoneForm((p) => ({ ...p, zone_type: e.target.value as ShippingZone['zone_type'] }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary">
+                          <option value="city">City</option>
+                          <option value="area">Area (keyword match)</option>
+                          <option value="state">State</option>
+                          <option value="distance">Distance Range</option>
+                        </select>
+                      </div>
+                      {(zoneForm.zone_type === 'city' || zoneForm.zone_type === 'area') && (
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">City</label>
+                          <input type="text" value={zoneForm.city} onChange={(e) => setZoneForm((p) => ({ ...p, city: e.target.value }))} placeholder="e.g. Mumbai" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      )}
+                      {(zoneForm.zone_type === 'state' || zoneForm.zone_type === 'area') && (
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">State</label>
+                          <input type="text" value={zoneForm.state} onChange={(e) => setZoneForm((p) => ({ ...p, state: e.target.value }))} placeholder="e.g. Maharashtra" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      )}
+                      {zoneForm.zone_type === 'area' && (
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Area Keywords (comma-separated)</label>
+                          <input type="text" value={zoneForm.area_keywords} onChange={(e) => setZoneForm((p) => ({ ...p, area_keywords: e.target.value }))} placeholder="e.g. Bandra, Andheri, Juhu" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                          <p className="mt-1 text-[10px] text-muted-foreground">Checkout will match if the customer&apos;s area contains any of these keywords.</p>
+                        </div>
+                      )}
+                      {zoneForm.zone_type === 'distance' && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Min Distance (km)</label>
+                            <input type="number" min={0} value={zoneForm.min_distance_km} onChange={(e) => setZoneForm((p) => ({ ...p, min_distance_km: parseFloat(e.target.value || '0') }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="text-sm font-semibold text-foreground">{w.title}</p>
-                              <span className={`text-[10px] font-bold uppercase tracking-[0.1em] px-2 py-0.5 rounded-full ${w.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                {w.is_active ? 'Active' : 'Hidden'}
-                              </span>
-                            </div>
-                            {w.description && <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{w.description}</p>}
-                            <div className="flex flex-wrap gap-x-4 gap-y-1">
-                              {w.instructor && <span className="text-xs text-muted-foreground flex items-center gap-1"><Icon name="UserIcon" size={11} />{w.instructor}</span>}
-                              {w.location && <span className="text-xs text-muted-foreground flex items-center gap-1"><Icon name="MapPinIcon" size={11} />{w.location}</span>}
-                              {w.workshop_date && <span className="text-xs text-muted-foreground flex items-center gap-1"><Icon name="CalendarIcon" size={11} />{new Date(w.workshop_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
-                              {w.price > 0 && <span className="text-xs font-semibold text-primary flex items-center gap-1"><Icon name="CurrencyRupeeIcon" size={11} />{w.price.toLocaleString('en-IN')}</span>}
-                              {w.duration && <span className="text-xs text-muted-foreground flex items-center gap-1"><Icon name="ClockIcon" size={11} />{w.duration}</span>}
-                            </div>
-                            {linkedCatalogue && (
-                              <div className="mt-2 flex items-center gap-2">
-                                <a href={linkedCatalogue.file_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-primary hover:underline">
-                                  <Icon name="ArrowDownTrayIcon" size={11} />
-                                  Download: {linkedCatalogue.title}
-                                </a>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button onClick={() => toggleWorkshopActive(w)} className="h-8 px-3 rounded-full border border-[rgba(196,120,90,0.2)] text-[10px] font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-                              {w.is_active ? 'Hide' : 'Show'}
-                            </button>
-                            <button onClick={() => openEditWorkshop(w)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-                              <Icon name="PencilIcon" size={12} />
-                            </button>
-                            <button onClick={() => deleteWorkshop(w.id)} disabled={deletingWorkshop === w.id} className="w-8 h-8 rounded-full border border-red-200 flex items-center justify-center text-red-400 hover:border-red-400 hover:text-red-600 transition-colors disabled:opacity-50">
-                              <Icon name="TrashIcon" size={12} />
-                            </button>
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Max Distance (km)</label>
+                            <input type="number" min={0} value={zoneForm.max_distance_km} onChange={(e) => setZoneForm((p) => ({ ...p, max_distance_km: parseFloat(e.target.value || '9999') }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
                           </div>
                         </div>
-                      );
-                    })}
+                      )}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Shipping Charge (₹)</label>
+                          <input type="number" min={0} value={zoneForm.shipping_charge} onChange={(e) => setZoneForm((p) => ({ ...p, shipping_charge: Math.round(parseFloat(e.target.value || '0')) }))} placeholder="0 = Free" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Delivery Days</label>
+                          <input type="number" min={1} value={zoneForm.delivery_days} onChange={(e) => setZoneForm((p) => ({ ...p, delivery_days: parseInt(e.target.value || '5') }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Free Shipping Above (₹) — 0 = never</label>
+                          <input type="number" min={0} value={zoneForm.free_shipping_above} onChange={(e) => setZoneForm((p) => ({ ...p, free_shipping_above: Math.round(parseFloat(e.target.value || '0')) }))} placeholder="e.g. 1250" className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Priority (higher = checked first)</label>
+                          <input type="number" min={0} value={zoneForm.priority} onChange={(e) => setZoneForm((p) => ({ ...p, priority: parseInt(e.target.value || '0') }))} className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm focus:outline-none focus:border-primary" />
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={zoneForm.is_active} onChange={(e) => setZoneForm((p) => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-primary" />
+                        <span className="text-xs font-semibold text-foreground">Active</span>
+                      </label>
+                    </div>
+                    <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
+                      <button onClick={() => setShowZoneModal(false)} className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">Cancel</button>
+                      <button disabled={savingZone} onClick={saveZone} className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50">
+                        {savingZone ? 'Saving…' : editingZone ? 'Update' : 'Add Zone'}
+                      </button>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
+
         </div>
       </section>
-
-      {/* ── Workshop Modal ── */}
-      {showWorkshopModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-5 border-b border-[rgba(196,120,90,0.08)] flex items-center justify-between">
-              <h3 className="font-display italic text-lg font-semibold text-foreground">
-                {editingWorkshop ? 'Edit Workshop' : 'Add Workshop'}
-              </h3>
-              <button onClick={() => setShowWorkshopModal(false)} className="w-8 h-8 rounded-full border border-[rgba(196,120,90,0.2)] flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-                <Icon name="XMarkIcon" size={16} />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Workshop Title *</label>
-                <input
-                  type="text"
-                  value={workshopForm.title}
-                  onChange={(e) => setWorkshopForm((p) => ({ ...p, title: e.target.value }))}
-                  placeholder="e.g. Resin Art Beginner Workshop"
-                  className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Description</label>
-                <textarea
-                  value={workshopForm.description}
-                  onChange={(e) => setWorkshopForm((p) => ({ ...p, description: e.target.value }))}
-                  placeholder="What will participants learn?"
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Instructor</label>
-                  <input
-                    type="text"
-                    value={workshopForm.instructor}
-                    onChange={(e) => setWorkshopForm((p) => ({ ...p, instructor: e.target.value }))}
-                    placeholder="Instructor name"
-                    className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Location</label>
-                  <input
-                    type="text"
-                    value={workshopForm.location}
-                    onChange={(e) => setWorkshopForm((p) => ({ ...p, location: e.target.value }))}
-                    placeholder="Venue or Online"
-                    className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Date & Time</label>
-                  <input
-                    type="datetime-local"
-                    value={workshopForm.workshop_date}
-                    onChange={(e) => setWorkshopForm((p) => ({ ...p, workshop_date: e.target.value }))}
-                    className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Duration</label>
-                  <input
-                    type="text"
-                    value={workshopForm.duration}
-                    onChange={(e) => setWorkshopForm((p) => ({ ...p, duration: e.target.value }))}
-                    placeholder="e.g. 3 hours"
-                    className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Price (₹)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={workshopForm.price}
-                    onChange={(e) => setWorkshopForm((p) => ({ ...p, price: Number(e.target.value) }))}
-                    placeholder="0"
-                    className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Max Participants</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={workshopForm.max_participants}
-                    onChange={(e) => setWorkshopForm((p) => ({ ...p, max_participants: e.target.value }))}
-                    placeholder="Unlimited"
-                    className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2">Link Catalogue (Download for Customers)</label>
-                <select
-                  value={workshopForm.catalogue_id}
-                  onChange={(e) => setWorkshopForm((p) => ({ ...p, catalogue_id: e.target.value }))}
-                  className="w-full h-10 px-4 rounded-xl border border-[rgba(196,120,90,0.2)] bg-[#FAF6F0] text-sm text-foreground focus:outline-none focus:border-primary"
-                >
-                  <option value="">— No catalogue —</option>
-                  {workshopCatalogues.filter((c) => c.is_active).map((c) => (
-                    <option key={c.id} value={c.id}>{c.title}</option>
-                  ))}
-                </select>
-                {workshopForm.catalogue_id && (
-                  <p className="mt-1.5 text-xs text-primary font-medium flex items-center gap-1">
-                    <Icon name="ArrowDownTrayIcon" size={11} />
-                    Customers will see a download link for this catalogue on the Workshops page
-                  </p>
-                )}
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={workshopForm.is_active}
-                  onChange={(e) => setWorkshopForm((p) => ({ ...p, is_active: e.target.checked }))}
-                  className="w-4 h-4 rounded border-[rgba(196,120,90,0.3)] accent-primary"
-                />
-                <span className="text-sm font-semibold text-foreground">Publish this workshop</span>
-              </label>
-            </div>
-            <div className="px-6 py-4 border-t border-[rgba(196,120,90,0.08)] flex items-center justify-end gap-3">
-              <button
-                onClick={() => setShowWorkshopModal(false)}
-                className="h-10 px-5 rounded-full border border-[rgba(196,120,90,0.2)] text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveWorkshop}
-                disabled={savingWorkshop || !workshopForm.title.trim()}
-                className="h-10 px-6 rounded-full bg-foreground text-[#FAF6F0] text-xs font-semibold uppercase tracking-[0.15em] hover:bg-primary transition-colors disabled:opacity-50"
-              >
-                {savingWorkshop ? 'Saving…' : editingWorkshop ? 'Update Workshop' : 'Create Workshop'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

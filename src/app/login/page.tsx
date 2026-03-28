@@ -2,7 +2,6 @@
 import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import AppLogo from '@/components/ui/AppLogo';
 import Icon from '@/components/ui/AppIcon';
@@ -10,8 +9,7 @@ import Icon from '@/components/ui/AppIcon';
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams?.get('redirect') || '/homepage';
-  const { signIn } = useAuth();
+  const redirect = searchParams?.get('redirect') || '/admin';
   const { showToast } = useToast();
 
   const [email, setEmail] = useState('');
@@ -28,14 +26,23 @@ function LoginForm() {
     setLoading(true);
     setError('');
     try {
-      await signIn(email.trim(), password);
+      const res = await fetch('/api/admin-auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data?.error || 'Invalid email or password. Please try again.';
+        setError(msg);
+        showToast(msg, 'error');
+        return;
+      }
       showToast('Welcome back!', 'success');
       router.push(redirect);
       router.refresh();
-    } catch (err: any) {
-      const rawMsg = err?.message || '';
-      const msg = rawMsg.toLowerCase().includes('rate limit')
-        ? 'Too many attempts. Please wait a few minutes before trying again.' : rawMsg ||'Invalid email or password. Please try again.';
+    } catch {
+      const msg = 'Something went wrong. Please try again.';
       setError(msg);
       showToast(msg, 'error');
     } finally {
@@ -48,22 +55,11 @@ function LoginForm() {
   return (
     <div className="w-full max-w-md bg-white rounded-3xl border border-[rgba(196,120,90,0.12)] shadow-card p-8 md:p-10">
       <h1 className="font-display italic text-3xl font-semibold text-foreground mb-1">
-        Welcome back
+        Admin Login
       </h1>
       <p className="text-sm text-muted-foreground mb-8">
-        Sign in to place orders and track your purchases.
+        Sign in with your admin credentials to access the panel.
       </p>
-
-      {/* Demo credentials */}
-      <div className="mb-6 p-4 rounded-xl bg-[#FAF6F0] border border-[rgba(196,120,90,0.15)] space-y-1">
-        <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary mb-2">Demo Accounts</p>
-        <p className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Admin:</span> admin@purelyjid.com / admin123
-        </p>
-        <p className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Customer:</span> customer@example.com / customer123
-        </p>
-      </div>
 
       {error && (
         <div className="mb-5 flex items-start gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200">
@@ -81,7 +77,7 @@ function LoginForm() {
             type="email"
             value={email}
             onChange={(e) => { setEmail(e.target.value); if (error) setError(''); }}
-            placeholder="you@example.com"
+            placeholder="admin@example.com"
             className={inputClass}
             autoComplete="email"
           />
@@ -129,13 +125,6 @@ function LoginForm() {
           )}
         </button>
       </form>
-
-      <p className="mt-6 text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{' '}
-        <Link href="/register" className="font-semibold text-primary hover:underline">
-          Create one
-        </Link>
-      </p>
 
       <p className="mt-3 text-center text-xs text-muted-foreground">
         Just browsing?{' '}
