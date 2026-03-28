@@ -52,26 +52,70 @@ export default function ProductsGrid() {
 
     const { data, error } = await supabase
       .from('products')
-      .select('*'); // 🔥 NO FILTER
+      .select('*') // keep simple for stability
+      .eq('is_active', true);
 
     console.log("DATA:", data);
     console.log("ERROR:", error);
 
     if (error) {
-      console.log("❌ ERROR:", error);
+      setAllProducts([]);
+      setCategories(['All']);
       return;
     }
 
     if (!data || data.length === 0) {
-      console.log("⚠️ NO DATA FOUND");
+      setAllProducts([]);
+      setCategories(['All']);
       return;
     }
 
-    // 🔥 TEMP: show raw data directly
-    setAllProducts(data as any);
+    // ✅ PROPER MAPPING (THIS FIXES YOUR UI)
+    const mapped: Product[] = data.map((p: any) => ({
+      id: p.id,
+      name: p.name || "No Name",
+      slug: p.slug || p.name?.toLowerCase().replace(/\s+/g, '-'),
+      
+      // 🔥 IMPORTANT FIXES
+      category: p.category || 'Uncategorized',
+      material: p.material || '',
+      
+      price: Math.round((p.price || 0) / 100),
+      originalPrice: p.original_price
+        ? Math.round(p.original_price / 100)
+        : null,
+
+      rating: 4.5,
+      reviews: 0,
+
+      badge: p.badge || null,
+      badgeColor: p.badge_color || 'bg-primary',
+
+      // 🔥 IMAGE FIX (VERY IMPORTANT)
+      image: p.image_url || p.image || 'https://via.placeholder.com/300',
+      alt: p.alt_text || p.name || 'product',
+
+      // 🔥 STOCK FIX
+      inStock: p.in_stock !== false,
+    }));
+
+    setAllProducts(mapped);
+
+    // ✅ Restore filters
+    const uniqueCategories = [
+      'All',
+      ...Array.from(new Set(mapped.map((p) => p.category)))
+    ];
+    setCategories(uniqueCategories);
+
+    // ✅ Restore price filter
+    const maxPrice = Math.max(...mapped.map((p) => p.price), 120);
+    setPriceMax(maxPrice);
 
   } catch (err) {
     console.log("❌ FETCH ERROR:", err);
+    setAllProducts([]);
+    setCategories(['All']);
   } finally {
     setLoading(false);
   }
