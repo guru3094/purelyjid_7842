@@ -47,66 +47,35 @@ export default function ProductsGrid() {
 
   // ✅ FETCH FUNCTION (FIXED)
   const fetchProducts = async () => {
-    try {
-      console.log("🔄 Fetching products from Supabase...");
+  try {
+    console.log("🔄 Fetching products...");
 
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name, slug, price, original_price, material, badge, badge_color, image_url, alt_text, in_stock, is_active, display_order, categories(name)')
-        .eq('is_active', true)
-        .order('display_order', { ascending: true });
+    const { data, error } = await supabase
+      .from('products')
+      .select('*'); // 🔥 NO FILTER
 
-      console.log("DATA:", data);
-      console.log("ERROR:", error);
+    console.log("DATA:", data);
+    console.log("ERROR:", error);
 
-      if (error) {
-        console.log("❌ Error fetching, falling back");
-        setAllProducts([]);
-        setCategories(['All']);
-        return;
-      }
-
-      if (!data || data.length === 0) {
-        console.log("⚠️ No products found");
-        setAllProducts([]);
-        setCategories(['All']);
-        return;
-      }
-
-      const mapped: Product[] = data.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        slug: p.slug || p.name.toLowerCase().replace(/\s+/g, '-'),
-        category: p.categories?.name || 'Uncategorized',
-        material: p.material || '',
-        price: Math.round((p.price || 0) / 100),
-        originalPrice: p.original_price ? Math.round(p.original_price / 100) : null,
-        rating: 4.8,
-        reviews: 0,
-        badge: p.badge || null,
-        badgeColor: p.badge_color || 'bg-primary',
-        image: p.image_url || '',
-        alt: p.alt_text || p.name,
-        inStock: p.in_stock !== false,
-      }));
-
-      setAllProducts(mapped);
-
-      const uniqueCategories = ['All', ...Array.from(new Set(mapped.map((p) => p.category)))];
-      setCategories(uniqueCategories);
-
-      const maxPrice = Math.max(...mapped.map((p) => p.price), 120);
-      setPriceMax(maxPrice);
-
-    } catch (err) {
-      console.log("❌ FETCH ERROR:", err);
-      setAllProducts([]);
-      setCategories(['All']);
-    } finally {
-      setLoading(false);
+    if (error) {
+      console.log("❌ ERROR:", error);
+      return;
     }
-  };
 
+    if (!data || data.length === 0) {
+      console.log("⚠️ NO DATA FOUND");
+      return;
+    }
+
+    // 🔥 TEMP: show raw data directly
+    setAllProducts(data as any);
+
+  } catch (err) {
+    console.log("❌ FETCH ERROR:", err);
+  } finally {
+    setLoading(false);
+  }
+};
   // ✅ INITIAL LOAD + REALTIME FIX
   useEffect(() => {
     fetchProducts();
